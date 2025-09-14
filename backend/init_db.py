@@ -64,6 +64,7 @@ def setup_database() -> None:
                     "geo": {"bsonType": "string"},
                     "volume": {"bsonType": "int"},
                     "start_date": {"bsonType": "date"},
+                    "thumbnail_url": {"bsonType": "string"},
                 },
             }
         }
@@ -76,8 +77,7 @@ def setup_database() -> None:
                     "analysis_type",
                     "created_at",
                     "status",
-                    "results",
-                ],
+                ],  # Removed 'results'
                 "properties": {
                     "entity_id": {"bsonType": "objectId"},
                     "analysis_type": {"enum": ["weekly", "on_demand"]},
@@ -87,12 +87,12 @@ def setup_database() -> None:
                     },
                     "results": {
                         "bsonType": "object",
+                        # No longer require specific count fields, $inc will create them
                         "properties": {
                             "positive_count": {"bsonType": "int"},
                             "negative_count": {"bsonType": "int"},
                             "neutral_count": {"bsonType": "int"},
                             "total_comments": {"bsonType": "int"},
-                            "source_video_count": {"bsonType": "int"},
                         },
                     },
                 },
