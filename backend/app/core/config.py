@@ -16,6 +16,18 @@ class Settings(BaseSettings):
     MONGODB_USR: str
     MONGODB_PWD: str
 
+    # Data Fetching Strategy Settings
+    FETCH_NUM_ENTITIES: int = 20
+    FETCH_VIDEOS_PER_ENTITY: int = 5
+    FETCH_COMMENTS_PER_VIDEO: int = 100
+    FETCH_TOTAL_COMMENTS_PER_ENTITY: int = 500
+    FETCH_TRENDS_GEO: str = "US"
+    FETCH_TRENDS_WITHIN_DAYS: int = 7
+
+    # Consumer Performance Settings
+    CONSUMER_BATCH_SIZE: int = 32
+    CONSUMER_BATCH_TIMEOUT_SECONDS: int = 5
+
     # Pydantic model configuration to load from .env file
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
