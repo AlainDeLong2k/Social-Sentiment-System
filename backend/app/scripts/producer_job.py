@@ -28,8 +28,7 @@ def run_producer_job() -> None:
     kafka_conf = {"bootstrap.servers": "localhost:9092"}
     producer = Producer(kafka_conf)
 
-    # kafka_topic = "raw_youtube_comments"
-    kafka_topic = "test-topic"
+    kafka_topic = settings.KAFKA_TOPIC
     print("Producer job started...")
 
     # --- 2. Get Trending Entities ---

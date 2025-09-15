@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     MONGODB_USR: str
     MONGODB_PWD: str
 
+    # Kafka Name Topic
+    KAFKA_TOPIC: str
+
     # Data Fetching Strategy Settings
     FETCH_NUM_ENTITIES: int = 20
     FETCH_VIDEOS_PER_ENTITY: int = 5

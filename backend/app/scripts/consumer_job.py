@@ -13,7 +13,6 @@ from datetime import datetime
 
 
 def process_message_batch(
-    # batch: List[Message], sentiment_pipeline: Pipeline, db: Database
     batch: List[Message],
     sentiment_service: SentimentService,
     db: Database,
@@ -157,8 +156,7 @@ def run_consumer_job() -> None:
         "auto.offset.reset": "earliest",
     }
     consumer = Consumer(kafka_conf)
-    # consumer.subscribe(["raw_youtube_comments"])
-    consumer.subscribe(["test-topic"])
+    consumer.subscribe([settings.KAFKA_TOPIC])
 
     print("Consumer job started. Waiting for messages...")
 
