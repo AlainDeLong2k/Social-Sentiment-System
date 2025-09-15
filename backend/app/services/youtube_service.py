@@ -31,7 +31,7 @@ class YouTubeService:
                 type="video",
                 maxResults=settings.FETCH_VIDEOS_PER_ENTITY,
                 relevanceLanguage="en",
-                publishedAfter=published_after,  # Add the time filter only if it's provided
+                publishedAfter=published_after,
                 order="relevance",
             )
 
