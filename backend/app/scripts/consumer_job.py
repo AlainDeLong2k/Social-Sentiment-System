@@ -1,15 +1,15 @@
+from typing import Any, List, Dict
 import json
 import time
-import torch
-from typing import Dict, Any, List
+from datetime import datetime
+from confluent_kafka import Consumer, KafkaError, Message
+
 from pymongo import MongoClient
 from pymongo.database import Database
 from bson.objectid import ObjectId
-from confluent_kafka import Consumer, KafkaError, Message
-from transformers import pipeline, Pipeline
+
 from app.core.config import settings
 from app.services.sentiment_service import SentimentService
-from datetime import datetime
 
 
 def process_message_batch(
@@ -148,7 +148,7 @@ def run_consumer_job() -> None:
     print("Initializing services...")
     sentiment_service = SentimentService()
     mongo_client = MongoClient(settings.MONGODB_CONNECTION_STRING)
-    db = mongo_client["sentiment_analysis_db"]
+    db = mongo_client[settings.DB_NAME]
 
     kafka_conf = {
         "bootstrap.servers": "localhost:9092",

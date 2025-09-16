@@ -1,4 +1,4 @@
-import os
+# import os
 from typing import Any, Dict
 
 from pymongo import MongoClient
@@ -8,7 +8,7 @@ from pymongo.errors import CollectionInvalid
 from app.core.config import settings
 
 # --- Database and Collection Names ---
-DB_NAME = "sentiment_analysis_db"
+DB_NAME = settings.DB_NAME
 ENTITIES_COLLECTION = "entities"
 ANALYSIS_RESULTS_COLLECTION = "analysis_results"
 SOURCES_YOUTUBE_COLLECTION = "sources_youtube"
@@ -77,7 +77,7 @@ def setup_database() -> None:
                     "analysis_type",
                     "created_at",
                     "status",
-                ],  # Removed 'results'
+                ],
                 "properties": {
                     "entity_id": {"bsonType": "objectId"},
                     "analysis_type": {"enum": ["weekly", "on_demand"]},
@@ -87,7 +87,6 @@ def setup_database() -> None:
                     },
                     "results": {
                         "bsonType": "object",
-                        # No longer require specific count fields, $inc will create them
                         "properties": {
                             "positive_count": {"bsonType": "int"},
                             "negative_count": {"bsonType": "int"},
