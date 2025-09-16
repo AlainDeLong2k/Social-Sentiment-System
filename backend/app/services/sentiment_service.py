@@ -1,6 +1,10 @@
-import torch
 from typing import List, Dict, Any
+
+import torch
 from transformers import pipeline, Pipeline
+from datasets import Dataset
+
+from app.core.config import settings
 
 
 class SentimentService:
@@ -26,7 +30,7 @@ class SentimentService:
         else:
             print("GPU not found. Loading model onto CPU.")
 
-        model_name = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+        model_name = settings.SENTIMENT_MODEL
         sentiment_pipeline = pipeline(
             "sentiment-analysis",
             model=model_name,
@@ -69,7 +73,15 @@ class SentimentService:
 
         indices, texts_to_predict = zip(*non_empty_texts_with_indices)
 
-        predictions = self.pipeline(list(texts_to_predict))
+        # Create a Hugging Face Dataset for efficient GPU batching.
+        dataset = Dataset.from_dict({"text": list(texts_to_predict)})
+
+        # Run predictions using dataset.map to let HF control batching
+        predictions = dataset.map(
+            lambda batch: {"pred": self.pipeline(batch["text"])},
+            batched=True,
+            batch_size=settings.CONSUMER_BATCH_SIZE,
+        )["pred"]
 
         # Map predictions back to the original batch structure
         final_results: List[Dict[str, Any] | None] = [None] * len(texts)
