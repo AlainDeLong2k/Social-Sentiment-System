@@ -1,4 +1,4 @@
-from typing import Any, List, Tuple, Dict
+from typing import Any, List, Dict
 from app.core.config import settings
 
 from googleapiclient.discovery import build, Resource
