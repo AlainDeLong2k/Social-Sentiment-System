@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     It constructs the complete MongoDB connection string from individual components.
     """
 
+    # Database name
+    DB_NAME: str
+
+    # AI Model name
+    SENTIMENT_MODEL: str
+
     # Youtube API Key
     YT_API_KEY: str
 
