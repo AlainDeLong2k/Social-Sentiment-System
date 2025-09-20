@@ -24,7 +24,7 @@ def get_db_client() -> MongoClient:
 
 
 def create_collection_with_validator(
-    db: Database, collection_name: str, validator: Dict[str, Any]
+        db: Database, collection_name: str, validator: Dict[str, Any]
 ) -> None:
     """
     Creates a collection with a specified JSON schema validator.
@@ -65,6 +65,7 @@ def setup_database() -> None:
                     "volume": {"bsonType": "int"},
                     "start_date": {"bsonType": "date"},
                     "thumbnail_url": {"bsonType": "string"},
+                    "video_url": {"bsonType": "string"}
                 },
             }
         }
@@ -121,6 +122,7 @@ def setup_database() -> None:
                     "text",
                     "author",
                     "publish_date",
+                    "sentiment"
                 ],
                 "properties": {
                     "source_id": {"bsonType": "objectId"},
@@ -128,12 +130,16 @@ def setup_database() -> None:
                     "text": {"bsonType": "string"},
                     "author": {"bsonType": "string"},
                     "publish_date": {"bsonType": "date"},
+                    "sentiment": {
+                        "enum": ["positive", "neutral", "negative"],
+                        "description": "can only be one of the enum values and is required"
+                    }
                 },
             }
         }
 
         # --- Create Collections ---
-        print("\nStarting database setup...")
+        print(f"\nStarting database '{settings.DB_NAME}' setup...")
         create_collection_with_validator(db, ENTITIES_COLLECTION, entities_validator)
         create_collection_with_validator(
             db, ANALYSIS_RESULTS_COLLECTION, analysis_results_validator
