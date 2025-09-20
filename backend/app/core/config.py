@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # AI Model name
     SENTIMENT_MODEL: str
 
-    # Youtube API Key
+    # YouTube API Key
     YT_API_KEY: str
 
     # MongoDB connection details
@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # Consumer Performance Settings
     CONSUMER_BATCH_SIZE: int = 32
     CONSUMER_BATCH_TIMEOUT_SECONDS: int = 5
+
+    # FastAPI
+    API_PREFIX: str = "/api"
+    API_VERSION: str = '/v1'
+    DEBUG: bool = False
 
     # Pydantic model configuration to load from .env file
     model_config = SettingsConfigDict(
