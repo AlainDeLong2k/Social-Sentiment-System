@@ -69,16 +69,23 @@ def run_producer_job() -> None:
         )
 
         if not videos:
-            print(f"No videos found for '{entity_keyword}'. Skipping.")
+            print(f"No videos found for '{entity_keyword}'. Skipping...")
             continue
 
-        entity_thumbnail_url = (
-            videos[0]
-            .get("snippet", {})
-            .get("thumbnails", {})
-            .get("high", {})
-            .get("url")
-        )
+        # entity_thumbnail_url = (
+        #     videos[0]
+        #     .get("snippet", {})
+        #     .get("thumbnails", {})
+        #     .get("high", {})
+        #     .get("url")
+        # )
+
+        first_video = videos[0] # NEW
+        entity_thumbnail_url = first_video.get("snippet", {}).get("thumbnails", {}).get("high", {}).get("url")
+        # NEW: Construct the representative video URL
+        video_id = first_video.get("id", {}).get("videoId", "")
+        entity_video_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else None
+
 
         # --- 3c. Fetch Comments with Smart Sampling ---
         comments_for_entity: List[Dict[str, Any]] = []
@@ -120,6 +127,7 @@ def run_producer_job() -> None:
             message_payload = {
                 "entity_keyword": entity_keyword,
                 "entity_thumbnail_url": entity_thumbnail_url,
+                "entity_video_url": entity_video_url,
                 "entity_volume": trend.volume,
                 "video_and_comment_data": comment,
             }

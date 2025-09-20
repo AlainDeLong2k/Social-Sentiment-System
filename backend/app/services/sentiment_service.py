@@ -1,10 +1,10 @@
 from typing import List, Dict, Any
+from app.core.config import settings
 
 import torch
-from transformers import pipeline, Pipeline
-from datasets import Dataset
-
-from app.core.config import settings
+import numpy as np
+from scipy.special import softmax
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, AutoConfig
 
 
 class SentimentService:
@@ -14,38 +14,28 @@ class SentimentService:
 
     def __init__(self) -> None:
         """
-        Initializes the service by loading the sentiment analysis model onto the appropriate device.
+        Initialize the service by loading the sentiment analysis model and tokenizer.
         """
-        self.pipeline: Pipeline = self._load_model()
-
-    def _load_model(self) -> Pipeline:
-        """
-        Checks for GPU availability and loads the sentiment analysis model.
-        """
-        device_index = 0 if torch.cuda.is_available() else -1
-        if device_index == 0:
-            print(
-                f"GPU found: {torch.cuda.get_device_name(0)}. Loading model onto GPU."
-            )
+        # Select device (GPU if available, otherwise CPU)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if self.device.type == "cuda":
+            print(f"GPU found: {torch.cuda.get_device_name(0)}. Loading model onto GPU.")
         else:
             print("GPU not found. Loading model onto CPU.")
 
+        # Load model, tokenizer, and config (for id2label mapping)
         model_name = settings.SENTIMENT_MODEL
-        sentiment_pipeline = pipeline(
-            "sentiment-analysis",
-            model=model_name,
-            tokenizer=model_name,
-            device=device_index,
-            max_length=512,
-            padding=True,
-            truncation=True,
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.config = AutoConfig.from_pretrained(model_name)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name).to(
+            self.device
         )
+        self.model.eval()  # set model to inference mode
         print("Sentiment model loaded successfully.")
-        return sentiment_pipeline
 
     def _preprocess_text(self, text: str) -> str:
         """
-        Preprocesses a single text by replacing @user mentions and http links.
+        Replace @user mentions and http links with placeholders.
         """
         if not isinstance(text, str):
             return ""
@@ -58,36 +48,54 @@ class SentimentService:
 
     def predict_batch(self, texts: List[str]) -> List[Dict[str, Any]]:
         """
-        Takes a batch of texts, preprocesses them, and returns sentiment predictions.
+        Predict sentiment for a batch of texts (batch size is assumed to be small).
         """
+        # Preprocess all texts
         preprocessed_texts = [self._preprocess_text(text) for text in texts]
 
-        # Filter out any empty strings that might result from preprocessing
-        # and keep track of original indices to map results back.
+        # Keep only non-empty texts and remember their original indices
         non_empty_texts_with_indices = [
             (i, text) for i, text in enumerate(preprocessed_texts) if text.strip()
         ]
-
         if not non_empty_texts_with_indices:
             return []
 
         indices, texts_to_predict = zip(*non_empty_texts_with_indices)
 
-        # Create a Hugging Face Dataset for efficient GPU batching.
-        dataset = Dataset.from_dict({"text": list(texts_to_predict)})
+        # Tokenize the batch
+        encoded_inputs = self.tokenizer(
+            list(texts_to_predict),
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=512,
+        ).to(self.device)
 
-        # Run predictions using dataset.map to let HF control batching
-        predictions = dataset.map(
-            lambda batch: {"pred": self.pipeline(batch["text"])},
-            batched=True,
-            batch_size=settings.CONSUMER_BATCH_SIZE,
-        )["pred"]
+        # Run inference
+        with torch.no_grad():
+            outputs = self.model(**encoded_inputs)
+            logits = outputs.logits.detach().cpu().numpy()
 
-        # Map predictions back to the original batch structure
+        # NEW: Explicitly clear intermediate tensors from VRAM
+        del encoded_inputs, outputs  # NEW
+        torch.cuda.empty_cache()  # NEW
+
+        # Apply softmax to get probabilities
+        probs = softmax(logits, axis=1)
+
+        # Map predictions to labels with highest probability
+        predictions = []
+        for prob in probs:
+            max_idx = int(np.argmax(prob))
+            predictions.append(
+                {"label": self.config.id2label[max_idx], "score": float(prob[max_idx])}
+            )
+
+        # Map predictions back to their original positions
         final_results: List[Dict[str, Any] | None] = [None] * len(texts)
         for original_index, prediction in zip(indices, predictions):
             final_results[original_index] = prediction
 
-        # Replace None with a default neutral prediction for empty texts
+        # Replace None results with a default neutral prediction
         default_prediction = {"label": "neutral", "score": 1.0}
         return [res if res is not None else default_prediction for res in final_results]
