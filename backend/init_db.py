@@ -86,6 +86,17 @@ def setup_database() -> None:
                     "status": {
                         "enum": ["pending", "processing", "completed", "failed"]
                     },
+                    "interest_over_time": {
+                        "bsonType": "array",
+                        "items": {
+                            "bsonType": "object",
+                            "required": ["date", "value"],
+                            "properties": {
+                                "date": {"bsonType": "string"},
+                                "value": {"bsonType": "int"}
+                            }
+                        }
+                    },
                     "results": {
                         "bsonType": "object",
                         "properties": {
@@ -138,6 +149,21 @@ def setup_database() -> None:
             }
         }
 
+        on_demand_jobs_validator: Dict[str, Any] = {
+            "$jsonSchema": {
+                "bsonType": "object",
+                "required": ["_id", "keyword", "status", "created_at", "updated_at"],
+                "properties": {
+                    "_id": {"bsonType": "string"}, # We will use our job_id as the document _id
+                    "keyword": {"bsonType": "string"},
+                    "status": {"enum": ["pending", "processing", "completed", "failed"]},
+                    "created_at": {"bsonType": "date"},
+                    "updated_at": {"bsonType": "date"},
+                    "result_id": {"bsonType": ["objectId", "null"]}, # Link to analysis_results on completion
+                }
+            }
+        }
+
         # --- Create Collections ---
         print(f"\nStarting database '{settings.DB_NAME}' setup...")
         create_collection_with_validator(db, ENTITIES_COLLECTION, entities_validator)
@@ -150,6 +176,7 @@ def setup_database() -> None:
         create_collection_with_validator(
             db, COMMENTS_YOUTUBE_COLLECTION, comments_youtube_validator
         )
+        create_collection_with_validator(db, "on_demand_jobs", on_demand_jobs_validator)
         print("\nDatabase setup completed successfully!")
 
     except Exception as e:

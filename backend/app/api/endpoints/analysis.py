@@ -1,6 +1,7 @@
-from typing import List, Dict
-from requests import HTTPError
-from fastapi import APIRouter, HTTPException
+from typing import Any, List, Dict
+import uuid
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, status, Request
 
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -10,17 +11,128 @@ import pandas as pd
 from trendspy import Trends
 
 from app.core.config import settings
-from app.schemas.analysis_schema import WeeklyTrendResponseSchema, TrendDetailResponseSchema
+from app.core.clients import qstash_client, qstash_receiver
+from app.schemas.analysis_schema import (
+    WeeklyTrendResponseSchema, TrendDetailResponseSchema, OnDemandRequestSchema, OnDemandResponseSchema,
+    JobStatusResponseSchema)
+from app.services.sentiment_service import SentimentService
+from app.services.youtube_service import YouTubeService
 
 # Create a router to organize endpoints
 # router = APIRouter(prefix="/trends", tags=["trends"])
-router = APIRouter(prefix="/trends")
+router = APIRouter(prefix=settings.API_PREFIX_TRENDS)
 
 # --- MongoDB Connection ---
 client = AsyncIOMotorClient(settings.MONGODB_CONNECTION_STRING)
 db = client[settings.DB_NAME]
 
-tr = Trends(request_delay=2.0)
+# Initialize services once when the application starts.
+# This avoids reloading the heavy AI model on every request.
+print("Initializing services...")
+tr = Trends(request_delay=4.0)
+yt_service = YouTubeService(api_key=settings.YT_API_KEY)
+sentiment_service = SentimentService()
+
+
+async def fetch_repr_comments(entity_id):
+    # Find all source videos linked to this entity
+    source_docs = await db.sources_youtube.find({'entity_id': entity_id}).to_list(length=None)
+    source_ids = [doc['_id'] for doc in source_docs]
+
+    if not source_ids:
+        return {"positive": [], "neutral": [], "negative": []}
+
+    # Fetch 2 comments for each sentiment
+    sentiments = ["positive", "neutral", "negative"]
+    comment_tasks = []
+    for sentiment in sentiments:
+        task = db.comments_youtube.find(
+            {'source_id': {'$in': source_ids}, 'sentiment': sentiment},
+            {'text': 1, 'author': 1, 'publish_date': 1, '_id': 0}
+        ).sort('publish_date', -1).limit(2).to_list(length=2)
+
+        comment_tasks.append(task)
+
+    results = await asyncio.gather(*comment_tasks)
+    # Convert datetime objects to string format for JSON response
+    for sentiment_list in results:
+        for comment in sentiment_list:
+            if 'publish_date' in comment and hasattr(comment['publish_date'], 'isoformat'):
+                comment['publish_date'] = comment['publish_date'].isoformat()
+
+    return dict(zip(sentiments, results))
+
+
+async def _get_full_entity_details(entity_id: ObjectId, analysis_type: str) -> Dict[str, Any] | None:
+    """
+    A helper function that fetches all detailed data for a given entity_id and analysis_type.
+    It retrieves pre-computed data and makes a live API call for interest data if needed.
+    """
+    # 1. Start query from analysis_results to get the core data
+    pipeline = [
+        {'$match': {'entity_id': entity_id, 'analysis_type': analysis_type}},
+        {'$sort': {'created_at': -1}},
+        {'$limit': 1},
+        {'$lookup': {
+            'from': 'entities',
+            'localField': 'entity_id',
+            'foreignField': '_id',
+            'as': 'entity_info'
+        }},
+        {'$unwind': '$entity_info'},
+        {'$project': {
+            'analysis_result_id': '$_id',  # Get the ID of this document for caching
+            '_id': {'$toString': '$entity_info._id'},
+            'keyword': '$entity_info.keyword',
+            'thumbnail_url': '$entity_info.thumbnail_url',
+            'representative_video_url': '$entity_info.representative_video_url',
+            'analysis': '$results',
+            'interest_over_time': '$interest_over_time'
+        }}
+    ]
+
+    main_data_list = await db.analysis_results.aggregate(pipeline).to_list(length=1)
+
+    if not main_data_list:
+        raise HTTPException(status_code=404, detail='Entity not found.')
+
+    main_data = main_data_list[0]
+
+    # 2. Check if interest data needs to be fetched live
+    if not main_data.get("interest_over_time"):
+        print(f"Interest data not found in DB for '{main_data['keyword']}'. Fetching live...")
+        interest_data_to_cache = []
+        try:
+            df = tr.interest_over_time(keywords=[main_data['keyword']], timeframe="now 7-d")
+            if not df.empty:
+                daily_df = df[[main_data['keyword']]].resample('D').mean().round(0).astype(int)
+                interest_data_to_cache = [
+                    {"date": index.strftime('%Y-%m-%d'), "value": int(row.iloc[0])}
+                    for index, row in daily_df.iterrows()
+                ]
+
+            # If successfully fetched new data, save it back to the database
+            if interest_data_to_cache:
+                main_data["interest_over_time"] = interest_data_to_cache
+                await db.analysis_results.update_one(
+                    {'_id': main_data['analysis_result_id']},  # Use the _id from the analysis_results doc
+                    {'$set': {'interest_over_time': interest_data_to_cache}}
+                )
+                print(f"Successfully cached interest data for '{main_data['keyword']}'.")
+            else:
+                main_data["interest_over_time"] = []
+
+        except Exception as e:
+            print(f"Could not fetch live interest data: {e}")
+            main_data["interest_over_time"] = []
+
+    # 3. Fetch representative comments
+    # This logic can be simplified and reused
+    rep_comments = await fetch_repr_comments(entity_id)
+
+    # 4. Combine and return
+    main_data.pop('analysis_result_id', None)
+    return {**main_data, "representative_comments": rep_comments}
 
 
 @router.get("/weekly", response_model=List[WeeklyTrendResponseSchema])
@@ -41,8 +153,6 @@ async def get_weekly_trends():
             {
                 '$sort': {'created_at': -1}
             },
-            # This is a simplified way to get the latest. A more robust way would involve grouping.
-            # For the scope of this project, we assume the latest documents are from the last run.
             {
                 '$limit': settings.FETCH_NUM_ENTITIES
             },
@@ -100,91 +210,241 @@ async def get_trend_detail(entity_id: str):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid entity ID format.")
 
-    # 1. Fetch main entity data and analysis results
-    entity_pipeline = [
-        {'$match': {'_id': entity_obj_id}},
-        {'$lookup': {
-            'from': 'analysis_results',
-            'localField': '_id',
-            'foreignField': 'entity_id',
-            'as': 'analysis_info'
-        }},
-        {'$unwind': '$analysis_info'},
-        {'$project': {
-            '_id': {'$toString': '$_id'},
-            'keyword': '$keyword',
-            'thumbnail_url': '$thumbnail_url',
-            'analysis': {
-                'positive_count': '$analysis_info.results.positive_count',
-                'negative_count': '$analysis_info.results.negative_count',
-                'neutral_count': '$analysis_info.results.neutral_count',
-                'total_comments': '$analysis_info.results.total_comments'
-            }
-        }}
-    ]
-    main_data_list = await db.entities.aggregate(entity_pipeline).to_list(length=1)
-    if not main_data_list:
-        raise HTTPException(status_code=404, detail='Entity not found.')
-    main_data = main_data_list[0]
-    print(main_data_list)
+    full_details = await _get_full_entity_details(entity_obj_id, "weekly")
+    if not full_details:
+        raise HTTPException(status_code=404, detail="Entity not found.")
 
-    # 2. Asynchronously fetch representative comments and interest data
-    async def fetch_repr_comments():
-        # Find all source videos linked to this entity
-        source_docs = await db.sources_youtube.find({'entity_id': entity_obj_id}).to_list(length=None)
-        source_ids = [doc['_id'] for doc in source_docs]
+    return full_details
 
-        if not source_ids:
-            return {"positive": [], "neutral": [], "negative": []}
 
-        # Fetch 2 comments for each sentiment
-        sentiments = ["positive", "neutral", "negative"]
-        comment_tasks = []
-        for sentiment in sentiments:
-            task = db.comments_youtube.find(
-                {'source_id': {'$in': source_ids}, 'sentiment': sentiment},
-                {'text': 1, 'author': 1, 'publish_date': 1, '_id': 0}
-            ).sort('publish_date', -1).limit(2).to_list(length=2)
+@router.post(
+    "/analysis/on-demand",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=OnDemandResponseSchema
+)
+async def create_on_demand_analysis(request_data: OnDemandRequestSchema):
+    """
+    Receives a keyword from the user, sends it to QStash for background
+    processing, and immediately returns a job ID.
+    """
+    keyword = request_data.keyword
+    if not keyword or not keyword.strip():
+        raise HTTPException(status_code=400, detail="Keyword cannot be empty.")
 
-            comment_tasks.append(task)
+    job_id = str(uuid.uuid4())
 
-        results = await asyncio.gather(*comment_tasks)
-        # Convert datetime objects to string format for JSON response
-        for sentiment_list in results:
-            for comment in sentiment_list:
-                if 'publish_date' in comment and hasattr(comment['publish_date'], 'isoformat'):
-                    comment['publish_date'] = comment['publish_date'].isoformat()
+    job_document = {
+        "_id": job_id,
+        "keyword": keyword,
+        "status": "pending",
+        "created_at": datetime.now(),
+        "updated_at": datetime.now(),
+        "result_id": None
+    }
+    await db.on_demand_jobs.insert_one(job_document)
 
-        return dict(zip(sentiments, results))
+    # callback_url = f"{settings.BASE_URL}/api/v1/trends/analysis/process-job"
+    callback_url = f"{settings.BASE_URL}{settings.API_PREFIX}{settings.API_VERSION}{settings.API_PREFIX_TRENDS}/analysis/process-job"
 
-    def fetch_interest_data():
-        df = tr.interest_over_time(keywords=[main_data['keyword']], timeframe="now 7-d")
+    print(f"Queuing job {job_id} for keyword '{keyword}' with callback to {callback_url}")
 
-        if df.empty:
-            return []
+    try:
+        qstash_client.message.publish_json(
+            url=callback_url,
+            body={"keyword": keyword, "job_id": job_id},
+            retries=3
+        )
+    except Exception as e:
+        # If publishing fails, update the job status to 'failed'
+        await db.on_demand_jobs.update_one({'_id': job_id}, {'$set': {'status': 'failed'}})
+        print(f"Error publishing to QStash: {e}")
+        raise HTTPException(status_code=500, detail="Failed to queue analysis job.")
 
-        # Resample hourly data to daily data
-        daily_df = df[[main_data['keyword']]].resample('D').mean().round(0).astype(int)
-
-        # Format for API response
-        interest_data = [
-            {"date": index.strftime('%Y-%m-%d'), "value": row.iloc[0]}
-            for index, row in daily_df.iterrows()
-        ]
-        return interest_data
-
-    # Run both task concurrently
-    # comments_task = fetch_repr_comments()
-    # interest_task = fetch_interest_data()
-    # repr_comments, interest_data = await asyncio.gather(comments_task, interest_task)
-    repr_comments = await fetch_repr_comments()
-    interest_data = fetch_interest_data()
-
-    # 3. Combine all data and return
-    response_data = {
-        **main_data,
-        "interest_over_time": interest_data,
-        "representative_comments": repr_comments
+    return {
+        "message": "Analysis job accepted and is being processed.",
+        "job_id": job_id,
     }
 
+
+@router.get("/analysis/status/{job_id}", response_model=JobStatusResponseSchema)
+async def get_analysis_status(job_id: str):
+    """
+    Checks the status of an on-demand analysis job from the 'on_demand_jobs' collection.
+    """
+    job = await db.on_demand_jobs.find_one({"_id": job_id})
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    response_data = {
+        "_id": job["_id"],
+        "status": job["status"],
+        "keyword": job["keyword"],
+        "result": None
+    }
+
+    # If job is completed, fetch the full result data
+    if job["status"] == "completed" and job.get("result_id"):
+        analysis_doc = await db.analysis_results.find_one({"_id": job["result_id"]})
+
+        # Check if the analysis document exists and contains an entity_id
+        if analysis_doc and analysis_doc.get("entity_id"):
+            # Get the correct entity_id from the analysis document
+            entity_id = analysis_doc['entity_id']
+
+            # Call the helper with the correct entity_id and type
+            full_details = await _get_full_entity_details(entity_id, "on_demand")
+            response_data["result"] = full_details
+
     return response_data
+
+
+@router.post("/analysis/process-job", include_in_schema=False)
+async def process_on_demand_job(request: Request):
+    """
+    A webhook endpoint called by QStash to perform the full analysis for a
+    single keyword. It fetches data, runs sentiment analysis, and saves all
+    results to the database.
+    """
+    # 1. Initialization
+    job_data = await request.json()
+    keyword = job_data.get("keyword")
+    job_id = job_data.get("job_id")
+
+    if not keyword:
+        # Acknowledge the request but do nothing if keyword is missing
+        return {"message": "Keyword is missing, job ignored."}
+
+    print(f"Processing job {job_id} for keyword: {keyword}")
+    # Update job status to 'processing'
+    await db.on_demand_jobs.update_one(
+        {'_id': job_id},
+        {'$set': {'status': 'processing', 'updated_at': datetime.now()}}
+    )
+
+    # 2. Fetch data (similar to a mini-producer)
+    # Note: For on-demand, I might use a smaller fetching strategy
+    videos = yt_service.search_videos(query_string=keyword)
+    if not videos:
+        print(f"No videos found for on-demand keyword: {keyword}")
+        return {"message": "No videos found."}
+
+    comments_for_entity: List[Dict[str, Any]] = []
+    for video in videos:
+        video_id = video.get("id", {}).get("videoId")
+        snippet = video.get("snippet", {})
+        if not video_id or not snippet:
+            continue
+
+        comments = yt_service.fetch_comments(video_id=video_id, limit=settings.ON_DEMAND_COMMENTS_PER_VIDEO)  # Smaller limit for on-demand
+
+        for comment in comments:
+            comment['video_id'] = video_id
+            comment['video_title'] = snippet.get('title')
+            comment['video_publish_date'] = snippet.get('publishedAt')
+            comment['video_url'] = f"https://www.youtube.com/watch?v={video_id}"
+        comments_for_entity.extend(comments)
+
+        if len(comments_for_entity) >= settings.ON_DEMAND_TOTAL_COMMENTS:  # Smaller total limit for on-demand
+            break
+
+    final_comments = comments_for_entity[:settings.ON_DEMAND_TOTAL_COMMENTS]
+    if not final_comments:
+        print(f"No comments found for on-demand keyword: {keyword}")
+        return {"message": "No comments found."}
+
+    # 3. Perform Sentiment Analysis IN BATCHES
+    print(f"Analyzing {len(final_comments)} comments in batches...")
+    batch_size = settings.CONSUMER_BATCH_SIZE
+    all_predictions = []
+
+    # Loop through comments in chunks of batch_size
+    for i in range(0, len(final_comments), batch_size):
+        batch_comments = final_comments[i:i + batch_size]
+        texts_to_predict = [comment.get("text", "") for comment in batch_comments]
+
+        # Process one small batch at a time
+        batch_predictions = sentiment_service.predict_batch(texts_to_predict)
+        all_predictions.extend(batch_predictions)
+        print(f"  - Processed batch {i // batch_size + 1}...")
+
+    # 4. Save results to Database (similar to a mini-consumer)
+    video_id_cache: Dict[str, ObjectId] = {}
+    comments_to_insert: List[Dict[str, Any]] = []
+
+    # 4a. Upsert Entity first to get a stable entity_id
+    entity_thumbnail_url = videos[0].get("snippet", {}).get("thumbnails", {}).get("high", {}).get("url")
+    entity_doc = await db.entities.find_one_and_update(
+        {'keyword': keyword},
+        {'$setOnInsert': {
+            'keyword': keyword, 'geo': settings.FETCH_TRENDS_GEO, 'volume': 0,  # Placeholder values
+            'thumbnail_url': entity_thumbnail_url, 'start_date': datetime.now()
+        }},
+        upsert=True, return_document=True
+    )
+    entity_id = entity_doc['_id']
+
+    # 4b. Process and save each comment
+    for comment_data, prediction in zip(final_comments, all_predictions):
+        sentiment_label = prediction['label'].lower()
+
+        # Upsert Source Video
+        video_id = comment_data.get("video_id")
+        source_id: ObjectId | None = video_id_cache.get(video_id)
+        if not source_id:
+            source_doc = await db.sources_youtube.find_one_and_update(
+                {'video_id': video_id},
+                {'$setOnInsert': {
+                    'entity_id': entity_id, 'video_id': video_id,
+                    'url': comment_data.get("video_url"), 'title': comment_data.get("video_title"),
+                    'publish_date': datetime.strptime(comment_data.get("video_publish_date"), "%Y-%m-%dT%H:%M:%SZ")
+                }},
+                upsert=True, return_document=True
+            )
+            source_id = source_doc['_id']
+            video_id_cache[video_id] = source_id
+
+        # Prepare comment for bulk insertion
+        comments_to_insert.append({
+            "source_id": source_id,
+            "comment_id": comment_data.get("comment_id"),
+            "text": comment_data.get("text"),
+            "author": comment_data.get("author"),
+            "publish_date": datetime.strptime(comment_data.get("publish_date"), "%Y-%m-%dT%H:%M:%SZ"),
+            "sentiment": sentiment_label
+        })
+
+        # Update aggregated results in real-time
+        await db.analysis_results.update_one(
+            {'entity_id': entity_id},
+            {
+                '$inc': {f'results.{sentiment_label}_count': 1, 'results.total_comments': 1},
+                '$setOnInsert': {
+                    'entity_id': entity_id, 'analysis_type': 'on_demand',  # Note the type
+                    'created_at': datetime.now(), 'status': 'completed', 'interest_over_time': []
+                }
+            },
+            upsert=True
+        )
+
+    # 4c. Bulk insert all comments after the loop
+    if comments_to_insert:
+        await db.comments_youtube.insert_many(comments_to_insert)
+
+    # 4d. Final update to job status
+    analysis_result_doc = await db.analysis_results.find_one(
+        {'entity_id': entity_id, 'analysis_type': 'on_demand'}
+    )
+    result_id = analysis_result_doc['_id'] if analysis_result_doc else None
+
+    await db.on_demand_jobs.update_one(
+        {'_id': job_id},
+        {'$set': {
+            'status': 'completed',
+            'result_id': result_id,
+            'updated_at': datetime.now()
+        }}
+    )
+
+    print(f"Successfully processed and saved analysis for job {job_id}")
+    return {"message": f"Job {job_id} for '{keyword}' processed successfully."}
