@@ -6,7 +6,7 @@ from confluent_kafka import Consumer, KafkaError, Message
 
 from pymongo import MongoClient
 from pymongo.database import Database
-from bson.objectid import ObjectId
+from bson import ObjectId
 
 from app.core.config import settings
 from app.services.sentiment_service import SentimentService
@@ -52,6 +52,7 @@ def process_message_batch(
         entity_thumbnail = message_data.get("entity_thumbnail_url")
         entity_video_url=message_data.get("entity_video_url")
         entity_volume = message_data.get("entity_volume")
+        interest_data=message_data.get("interest_over_time")
         data = message_data.get("video_and_comment_data", {})
 
         video_id = data.get("video_id")
@@ -131,6 +132,7 @@ def process_message_batch(
                     "analysis_type": "weekly",
                     "created_at": datetime.now(),
                     "status": "completed",
+                    "interest_over_time": interest_data
                 },
             },
             upsert=True,
