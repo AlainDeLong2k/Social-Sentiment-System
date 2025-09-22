@@ -1,4 +1,5 @@
 import json
+import pandas as pd
 from typing import Any, List, Dict
 from datetime import datetime as dt, timedelta
 from trendspy import Trends
@@ -51,6 +52,23 @@ def run_producer_job() -> None:
         entity_keyword = trend.keyword
         print(f"\n--- Processing entity: {entity_keyword} ---")
 
+        # --- Fetch and process interest over time data ---
+        interest_data = []
+        try:
+            trends_client_for_interest = Trends()
+            df = trends_client_for_interest.interest_over_time(
+                keywords=[entity_keyword], timeframe=f"now {settings.FETCH_TRENDS_WITHIN_DAYS}-d"
+            )
+            if not df.empty:
+                daily_df = df[[entity_keyword]].resample('D').mean().round(0).astype(int)
+                interest_data = [
+                    {"date": index.strftime('%Y-%m-%d'), "value": int(row.iloc[0])}
+                    for index, row in daily_df.iterrows()
+                ]
+            print(f"Successfully fetched interest over time data for '{entity_keyword}'.")
+        except Exception as e:
+            print(f"Could not fetch interest over time data for '{entity_keyword}': {e}")
+
         # --- 3a. Contextual Query Building ---
         # Sort related keywords by length to prioritize more specific ones
         related_keywords = sorted(trend.trend_keywords, key=len, reverse=True)
@@ -72,20 +90,11 @@ def run_producer_job() -> None:
             print(f"No videos found for '{entity_keyword}'. Skipping...")
             continue
 
-        # entity_thumbnail_url = (
-        #     videos[0]
-        #     .get("snippet", {})
-        #     .get("thumbnails", {})
-        #     .get("high", {})
-        #     .get("url")
-        # )
-
-        first_video = videos[0] # NEW
+        first_video = videos[0]
         entity_thumbnail_url = first_video.get("snippet", {}).get("thumbnails", {}).get("high", {}).get("url")
-        # NEW: Construct the representative video URL
+        # Construct the representative video URL
         video_id = first_video.get("id", {}).get("videoId", "")
         entity_video_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else None
-
 
         # --- 3c. Fetch Comments with Smart Sampling ---
         comments_for_entity: List[Dict[str, Any]] = []
@@ -129,6 +138,7 @@ def run_producer_job() -> None:
                 "entity_thumbnail_url": entity_thumbnail_url,
                 "entity_video_url": entity_video_url,
                 "entity_volume": trend.volume,
+                "interest_over_time": interest_data,
                 "video_and_comment_data": comment,
             }
             producer.produce(

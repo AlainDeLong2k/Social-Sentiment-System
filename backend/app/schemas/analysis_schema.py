@@ -64,3 +64,29 @@ class TrendDetailResponseSchema(WeeklyTrendResponseSchema):
     """
     interest_over_time: List[InterestOverTimePoint]
     representative_comments: RepresentativeCommentsSchema
+
+
+# --- Schemas for On-Demand Analysis ---
+class OnDemandRequestSchema(BaseModel):
+    """
+    Defines the request body for an on-demand analysis request from a user.
+    """
+    keyword: str
+
+
+class OnDemandResponseSchema(BaseModel):
+    """
+    Defines the response body after successfully queuing an on-demand job.
+    """
+    job_id: str
+    message: str
+
+
+class JobStatusResponseSchema(BaseModel):
+    """
+    Represents the status of an on-demand job.
+    """
+    job_id: str = Field(..., alias="_id")
+    status: str
+    keyword: str
+    result: TrendDetailResponseSchema | None = None

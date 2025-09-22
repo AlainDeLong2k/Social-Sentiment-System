@@ -39,8 +39,22 @@ class Settings(BaseSettings):
 
     # FastAPI
     API_PREFIX: str = "/api"
-    API_VERSION: str = '/v1'
+    API_VERSION: str = "/v1"
+    API_PREFIX_TRENDS: str
     DEBUG: bool = False
+
+    # QStash Settings
+    QSTASH_URL: str = "https://qstash.upstash.io"
+    QSTASH_TOKEN: str
+    QSTASH_CURRENT_SIGNING_KEY: str
+    QSTASH_NEXT_SIGNING_KEY: str
+
+    # Base URL for the application, used for constructing callback URLs
+    BASE_URL: str = "http://localhost:8000"
+
+    # On-Demand Use Case
+    ON_DEMAND_COMMENTS_PER_VIDEO: int = 100
+    ON_DEMAND_TOTAL_COMMENTS: int = 500
 
     # Pydantic model configuration to load from .env file
     model_config = SettingsConfigDict(
