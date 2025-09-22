@@ -185,7 +185,9 @@ dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
     { name = "pymongo" },
+    { name = "pyngrok" },
     { name = "python-dotenv" },
+    { name = "qstash" },
     { name = "requests" },
     { name = "scipy" },
     { name = "transformers" },
@@ -206,7 +208,9 @@ requires-dist = [
     { name = "numpy", specifier = "==2.2.6" },
     { name = "pydantic", specifier = "==2.11.8" },
     { name = "pymongo", specifier = "==4.14.0" },
+    { name = "pyngrok", specifier = ">=7.3.0" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
+    { name = "qstash", specifier = "==3.0.0" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "scipy", specifier = ">=1.16.2" },
     { name = "transformers", specifier = ">=4.56.1" },
@@ -1406,6 +1410,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyjwt"
+version = "2.10.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e7/46/bd74733ff231675599650d3e47f361794b22ef3e3770998dda30d3b63726/pyjwt-2.10.1.tar.gz", hash = "sha256:3cc5772eb20009233caf06e9d8a0577824723b44e6648ee0a2aedb6cf9381953", size = 87785, upload-time = "2024-11-28T03:43:29.933Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/ad/689f02752eeec26aed679477e80e632ef1b682313be70793d798c1d5fc8f/PyJWT-2.10.1-py3-none-any.whl", hash = "sha256:dcdd193e30abefd5debf142f9adfcdd2b58004e644f25406ffaebd50bd98dacb", size = 22997, upload-time = "2024-11-28T03:43:27.893Z" },
+]
+
+[[package]]
 name = "pymongo"
 version = "4.14.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1450,6 +1463,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c0/a1/87340e5a38003ef3591fdfc4b911fb32531b0dbbed8ab2431006858590fe/pymongo-4.14.0-cp313-cp313t-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:5fe93676afe37794f01b8df5cf16528dce4d7d174cdf51ea1586c234eb5263c2", size = 2221380, upload-time = "2025-08-06T13:40:45.256Z" },
     { url = "https://files.pythonhosted.org/packages/0a/68/3970d18b0b58c4681598bc1e233f33c15ff0c388422b17ddd195e214f35d/pymongo-4.14.0-cp313-cp313t-win32.whl", hash = "sha256:1462fc2bb39527f01eea5378172b66c45d62e22fa4be957afe2ec747c4d2ff51", size = 980892, upload-time = "2025-08-06T13:40:46.908Z" },
     { url = "https://files.pythonhosted.org/packages/2d/fa/68b1555e62ed3ee87f8a2de99d5fb840cf045748da4488870b4dced44a95/pymongo-4.14.0-cp313-cp313t-win_amd64.whl", hash = "sha256:e506af9b25aac77cc5c5ea4a72f81764e4f5ea90ca799aac43d665ab269f291d", size = 1011181, upload-time = "2025-08-06T13:40:48.641Z" },
+]
+
+[[package]]
+name = "pyngrok"
+version = "7.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7b/64/e5646daaa4a84ecb368c09d42753f1c6e1a41b38579a36fda8ffe5716d9f/pyngrok-7.3.0.tar.gz", hash = "sha256:f2240e49b9dec9b27eba00f1444cd3cce7ac45d1bcc493a9b76ee63c2da9882c", size = 44266, upload-time = "2025-08-04T16:08:07.015Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/6b/664772910199399db3706243488eb3a986bd8435583caef9cf8359eecfaa/pyngrok-7.3.0-py3-none-any.whl", hash = "sha256:708c48276d3a887d4263f0f4bc8171e22d66df6cfa74a4857625c83160603166", size = 25394, upload-time = "2025-08-04T16:08:05.368Z" },
 ]
 
 [[package]]
@@ -1533,6 +1558,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fe/0f/25911a9f080464c59fab9027482f822b86bf0608957a5fcc6eaac85aa515/PyYAML-6.0.2-cp313-cp313-musllinux_1_1_x86_64.whl", hash = "sha256:68ccc6023a3400877818152ad9a1033e3db8625d899c72eacb5a668902e4d652", size = 751597, upload-time = "2024-08-06T20:32:56.985Z" },
     { url = "https://files.pythonhosted.org/packages/14/0d/e2c3b43bbce3cf6bd97c840b46088a3031085179e596d4929729d8d68270/PyYAML-6.0.2-cp313-cp313-win32.whl", hash = "sha256:bc2fa7c6b47d6bc618dd7fb02ef6fdedb1090ec036abab80d4681424b84c1183", size = 140527, upload-time = "2024-08-06T20:33:03.001Z" },
     { url = "https://files.pythonhosted.org/packages/fa/de/02b54f42487e3d3c6efb3f89428677074ca7bf43aae402517bc7cca949f3/PyYAML-6.0.2-cp313-cp313-win_amd64.whl", hash = "sha256:8388ee1976c416731879ac16da0aff3f63b286ffdd57cdeb95f3f2e085687563", size = 156446, upload-time = "2024-08-06T20:33:04.33Z" },
+]
+
+[[package]]
+name = "qstash"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pyjwt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4a/56/6fff6313f03d29122038ed6a032f283ed60c1635174d56a8adada550bb08/qstash-3.0.0.tar.gz", hash = "sha256:67493e572d6618ce6b5d53d68baf518e77369e87c86783f3c9238fa9f368b05e", size = 24906, upload-time = "2025-05-06T06:31:09.823Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/22/da/1b0dec4f5f74ce24616d4c8201c01d0041bc342a3e1fbee97f876fd99751/qstash-3.0.0-py3-none-any.whl", hash = "sha256:f784da346d3c4a4163e4ec258fd884aa84856616f9ebf3f20c72de0cf52cc3e0", size = 34545, upload-time = "2025-05-06T06:31:08.826Z" },
 ]
 
 [[package]]
