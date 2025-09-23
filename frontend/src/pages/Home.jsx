@@ -1,7 +1,8 @@
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
-import ReactPlayer from "react-player";
+import { Navbar } from "../components/Navbar";
+import socialSentiment from "../assets/social-sentiment.jpg";
 import { AiOutlineArrowDown } from "react-icons/ai";
 import { Person } from "./person";
 
@@ -300,17 +301,9 @@ export const Home = () => {
 
   return (
     <div className="Home">
-      {/* <Nav /> */}
+      <Navbar />
       <div className="video">
-        {/* <ReactPlayer
-          url={video}
-          playing={true}
-          width="100%"
-          height="100%"
-          // volume={0.8}
-          muted={true}
-          loop={true}
-        /> */}
+        <img src={socialSentiment} width="100%" height="100%" />
         <button className="play-button" onClick={handleClick}>
           Scroll-down <AiOutlineArrowDown />
         </button>
