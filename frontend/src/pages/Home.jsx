@@ -13,7 +13,7 @@ export const Home = () => {
     ref.current.scrollIntoView({ behavior: "smooth" });
   };
 
-  const [persons, setpersons] = useState([
+  const [persons, setPersons] = useState([
     {
       image:
         "https://cdn.wisden.com/wp-content/uploads/2023/04/MS-Dhoni-980x530.png",
@@ -159,7 +159,7 @@ export const Home = () => {
       word: "https://raw.githubusercontent.com/Caffeine-Coders/Sentiment-Analysis-Project/main/frontend/src/wordclouds/rahul%20gandhiwordcloud.png",
     },
   ]);
-  const [topics, settopics] = useState([
+  const [topics, setTopics] = useState([
     {
       image:
         "https://pixelz.cc/wp-content/uploads/2018/07/nasa-logo-uhd-4k-wallpaper.jpg",
@@ -209,7 +209,7 @@ export const Home = () => {
     },
   ]);
 
-  const [entertainment, setentertainment] = useState([
+  const [entertainment, setEntertainment] = useState([
     {
       image:
         "https://hindubabynames.info/downloads/wp-content/themes/hbn_download/download/sports-ipl/ipl-logo.png",
@@ -297,7 +297,7 @@ export const Home = () => {
     },
   ]);
 
-  const [currdiv, setcurrdiv] = useState(0);
+  const [currDiv, setCurrDiv] = useState(0);
 
   return (
     <div className="Home">
