@@ -8,30 +8,30 @@ import { BootstrapProgress } from "../components/BootstrapProgress";
 export const AnalysisDetail = () => {
   const selected = JSON.parse(localStorage.getItem("data"));
   console.log(selected.video);
-  const [cur_data, setcurrdata] = useState([]);
+  const [currData, setCurrData] = useState([]);
   const divRef = useRef(null);
-  const config_json = import.meta.env.VITE_CONFIG_JSON;
+  const configJSON = import.meta.env.VITE_CONFIG_JSON;
 
   const handleClick = () => {
     divRef.current.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
-    fetch(config_json)
+    fetch(configJSON)
       .then((response) => response.json())
       .then((data) => {
         var name = selected.name + "";
         console.log(name);
         const Data = data[name];
-        setcurrdata(Data);
+        setCurrData(Data);
         console.log(Data);
       })
       .catch((error) => console.error(error));
   }, []);
 
-  const positive = cur_data.positive + "%";
-  const negative = cur_data.negative + "%";
-  const neutral = cur_data.neutral + "%";
+  const positive = currData.positive + "%";
+  const negative = currData.negative + "%";
+  const neutral = currData.neutral + "%";
 
   return (
     <div>
@@ -61,7 +61,7 @@ export const AnalysisDetail = () => {
 
           <h1>{selected.name} Google Trend Analysis</h1>
           <div className="carousel">
-            <Chart jsonData={JSON.stringify(cur_data["count of tweets"])} />
+            <Chart jsonData={JSON.stringify(currData["count of tweets"])} />
           </div>
         </div>
       </div>
