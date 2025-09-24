@@ -35,13 +35,20 @@ export const Navbar = () => {
             <li className="nav-item">
               <a
                 className="nav-link"
-                href="https://github.com/Caffeine-Coders/Sentiment-Analysis-Project/blob/main/backend/personanalysis.ipynb"
+                href={import.meta.env.VITE_GIHUB}
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 View Code
               </a>
             </li>
             <li className="nav-item">
-              <a className="nav-link" href="https://huggingface.co/AK776161">
+              <a
+                className="nav-link"
+                href={import.meta.env.VITE_HUGGINGFACE}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Want to look at the model?
               </a>
             </li>
