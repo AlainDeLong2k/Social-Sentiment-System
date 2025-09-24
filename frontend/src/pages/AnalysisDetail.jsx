@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { Navbar } from "../components/Navbar";
 import { BootstrapLoader } from "../components/BootstrapLoader";
 import { BootstrapProgress } from "../components/BootstrapProgress";
+import { CommentList } from "../components/CommentList";
 import { Chart } from "../components/chart";
 import ReactPlayer from "react-player";
 import { AiOutlineArrowDown } from "react-icons/ai";
@@ -109,12 +110,35 @@ export const AnalysisDetail = () => {
 
           <h1>Interest Over Last 7 Days</h1>
           <div className="carousel">
-            {/* <Chart jsonData={JSON.stringify(details.interest_over_time)} /> */}
             <Chart chartData={details.interest_over_time} />
           </div>
 
           <h1>Newest Comments</h1>
-          {/* You would add components here to display representative_comments */}
+          <div className="container mt-5">
+            <div className="row">
+              <div className="col-md-4">
+                <CommentList
+                  title="Newest Positive Comments"
+                  comments={details.representative_comments.positive}
+                  sentimentType="success" // Bootstrap class for green
+                />
+              </div>
+              <div className="col-md-4">
+                <CommentList
+                  title="Newest Neutral Comments"
+                  comments={details.representative_comments.neutral}
+                  sentimentType="secondary" // Bootstrap class for grey
+                />
+              </div>
+              <div className="col-md-4">
+                <CommentList
+                  title="Newest Negative Comments"
+                  comments={details.representative_comments.negative}
+                  sentimentType="danger" // Bootstrap class for red
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
