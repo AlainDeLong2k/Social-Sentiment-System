@@ -22,3 +22,20 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environments
+.env
+.env.development
+
+# Config JSON
+config.json
+
+# Temp files
+App_1.jsx
+App_2.jsx
+AppRoutes_1.jsx
+AppRoutes_2.jsx
+Home_1.jsx
+Home_2.jsx
+AnalysisDetail_1.jsx
+AnalysisDetail_2.jsx

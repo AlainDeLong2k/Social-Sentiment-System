@@ -1,15 +1,13 @@
-import React from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 
-export const BootstrapCard = ({ img, name, desc }) => {
+export const BootstrapCard = ({ img, name }) => {
   return (
     <div>
-      <div class="card" style={{ width: "18rem", height: "20rem" }}>
-        <img src={img} class="card-img-top" alt=" " />
-        <div class="card-body">
-          <h5 class="card-title">{name}</h5>
-          <p class="card-text"> {desc}</p>
+      <div className="card" style={{ width: "18rem", height: "20rem" }}>
+        <img src={img} className="card-img-top" alt=" " />
+        <div className="card-body">
+          <h5 className="card-title">{name}</h5>
         </div>
       </div>
     </div>
