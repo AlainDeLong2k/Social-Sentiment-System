@@ -39,13 +39,16 @@
 }
 
 .card-img-top {
-  height: 50%;
+  /* height: 50%; */
+  height: 80%;
   object-fit: cover;
 }
 
 .card-body {
-  height: 50%;
+  /* height: 50%; */
+  height: 20%;
   overflow: hidden;
+  text-align: center;
 }
 
 .inner {
@@ -53,7 +56,7 @@
   margin-right: 14px;
 }
 
-.analysisperson {
+.analysis-person {
   /* width: 800px; */
   height: 800px;
 }
@@ -73,7 +76,7 @@
   text-decoration: underline;
 }
 
-.analysisperson > p {
+.analysis-person > p {
   position: absolute; /* Set the button to an absolute position */
   top: 59%; /* Position the button in the center of the player */
   left: 30%;
