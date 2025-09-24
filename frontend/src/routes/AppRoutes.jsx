@@ -1,18 +1,15 @@
-import { HashRouter, BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Home } from "../pages/Home";
 import { AnalysisDetail } from "../pages/AnalysisDetail";
 
 export const AppRoutes = () => {
   return (
-    // <HashRouter>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/home" element={<Home />} />
         <Route path="/analysis/:entityId" element={<AnalysisDetail />} />
-        {/* <Route path="/keyword" element={<Home />} /> */}
       </Routes>
     </BrowserRouter>
-    // </HashRouter>
   );
 };
