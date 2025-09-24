@@ -8,13 +8,12 @@ export const Person = ({ persons }) => {
       {persons.map((item, index) => {
         return (
           <div
-            key={item.id || index}
+            key={item.entity_id || index}
             onClick={() => {
-              localStorage.setItem("data", JSON.stringify(item));
-              navigate("/analysis");
+              navigate(`/analysis/${item._id}`);
             }}
           >
-            <BootstrapCard img={item.image} name={item.name} desc={item.desc} />
+            <BootstrapCard img={item.thumbnail_url} name={item.keyword} />
           </div>
         );
       })}

@@ -6,7 +6,7 @@ export const Navbar = () => {
   return (
     <nav className="navbar navbar-expand-lg bg-dark-subtle">
       <div className="container-fluid">
-        <a className="navbar-brand eye" href="#">
+        <a className="navbar-brand eye" href="/">
           <img src={logoBKU} width="70px" />
         </a>
         <button
@@ -23,7 +23,7 @@ export const Navbar = () => {
         <div className="collapse navbar-collapse" id="navbarNav">
           <ul className="navbar-nav">
             <li className="nav-item">
-              <a className="nav-link active" aria-current="page" href="/#/home">
+              <a className="nav-link active" aria-current="page" href="/home">
                 Home
               </a>
             </li>
