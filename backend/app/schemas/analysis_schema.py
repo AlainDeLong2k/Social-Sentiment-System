@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Literal, Union
 from pydantic import BaseModel, Field
 
 
@@ -83,13 +83,27 @@ class OnDemandRequestSchema(BaseModel):
     keyword: str
 
 
-class OnDemandResponseSchema(BaseModel):
+# Define two distinct response schemas
+class QueuedResponseSchema(BaseModel):
     """
-    Defines the response body after successfully queuing an on-demand job.
+    Response when a new job is successfully queued.
     """
 
+    status: Literal["queued"]
     job_id: str
-    message: str
+
+
+class FoundResponseSchema(BaseModel):
+    """
+    Response when an existing analysis is found.
+    """
+
+    status: Literal["found"]
+    entity_id: str
+
+
+# The final response model is a Union of the two possibilities
+OnDemandResponseSchema = Union[QueuedResponseSchema, FoundResponseSchema]
 
 
 class JobStatusResponseSchema(BaseModel):

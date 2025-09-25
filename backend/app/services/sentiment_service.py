@@ -19,7 +19,9 @@ class SentimentService:
         # Select device (GPU if available, otherwise CPU)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if self.device.type == "cuda":
-            print(f"GPU found: {torch.cuda.get_device_name(0)}. Loading model onto GPU.")
+            print(
+                f"GPU found: {torch.cuda.get_device_name(0)}. Loading model onto GPU."
+            )
         else:
             print("GPU not found. Loading model onto CPU.")
 
@@ -76,9 +78,9 @@ class SentimentService:
             outputs = self.model(**encoded_inputs)
             logits = outputs.logits.detach().cpu().numpy()
 
-        # NEW: Explicitly clear intermediate tensors from VRAM
-        del encoded_inputs, outputs  # NEW
-        torch.cuda.empty_cache()  # NEW
+        # Explicitly clear intermediate tensors from VRAM
+        del encoded_inputs, outputs
+        torch.cuda.empty_cache()
 
         # Apply softmax to get probabilities
         probs = softmax(logits, axis=1)

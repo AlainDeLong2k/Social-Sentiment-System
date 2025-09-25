@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # Base URL for the application, used for constructing callback URLs
     BASE_URL: str = "http://localhost:8000"
 
+    # Display Settings
+    HOME_PAGE_ENTITIES_LIMIT: int = 10
+    REPRESENTATIVE_COMMENTS_LIMIT: int = 3
+
     # On-Demand Use Case
     ON_DEMAND_COMMENTS_PER_VIDEO: int = 100
     ON_DEMAND_TOTAL_COMMENTS: int = 500

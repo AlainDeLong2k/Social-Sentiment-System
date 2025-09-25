@@ -28,11 +28,12 @@ export const getWeeklyTrends = async () => {
 /**
  * Fetches the detailed analysis for a specific entity.
  * @param {string} entityId The ID of the entity.
+ * @param {string} analysisType The type of analysis ('weekly' or 'on-demand').
  * @returns {Promise<Object>} A promise that resolves to the detailed trend object.
  */
-export const getTrendDetail = async (entityId) => {
+export const getTrendDetail = async (entityId, analysisType) => {
   try {
-    const response = await apiClient.get(`/trends/${entityId}`);
+    const response = await apiClient.get(`/trends/${analysisType}/${entityId}`);
     return response.data;
   } catch (error) {
     console.error(

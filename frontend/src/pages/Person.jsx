@@ -10,7 +10,7 @@ export const Person = ({ persons }) => {
           <div
             key={item.entity_id || index}
             onClick={() => {
-              navigate(`/analysis/${item._id}`);
+              navigate(`/analysis/weekly/${item._id}`);
             }}
           >
             <BootstrapCard img={item.thumbnail_url} name={item.keyword} />

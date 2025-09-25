@@ -30,6 +30,7 @@ class YouTubeService:
                 part="snippet",
                 type="video",
                 maxResults=settings.FETCH_VIDEOS_PER_ENTITY,
+                regionCode="US",
                 relevanceLanguage="en",
                 publishedAfter=published_after,
                 order="relevance",
