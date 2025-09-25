@@ -10,8 +10,8 @@ import { AiOutlineArrowDown } from "react-icons/ai";
 import { getTrendDetail } from "../services/apiService";
 
 export const AnalysisDetail = () => {
-  // Get the dynamic 'entityId' from the URL
-  const { entityId } = useParams();
+  // Use useParams to get both 'type' and 'entityId' from the URL
+  const { type, entityId } = useParams();
 
   const [details, setDetails] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,7 +28,7 @@ export const AnalysisDetail = () => {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await getTrendDetail(entityId);
+        const data = await getTrendDetail(entityId, type);
         setDetails(data);
       } catch (err) {
         setError(err.message || "Failed to fetch details.");
@@ -39,7 +39,7 @@ export const AnalysisDetail = () => {
     };
 
     fetchData();
-  }, [entityId]); // Re-run this effect if the entityId changes
+  }, [entityId, type]); // Re-run this effect if either entityId or type changes
 
   const handleClick = () => {
     divRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -82,6 +82,11 @@ export const AnalysisDetail = () => {
       ? ((details.analysis.neutral_count / total) * 100).toFixed(2) + "%"
       : "0%";
 
+  // NEW: Construct the Google Trends URL for the link button
+  const trendsUrl = `https://trends.google.com/trends/explore?date=now%207-d&gprop=youtube&q=${encodeURIComponent(
+    details.keyword
+  )}`;
+
   return (
     <div>
       <Navbar />
@@ -110,7 +115,26 @@ export const AnalysisDetail = () => {
 
           <h1>Interest Over Last 7 Days</h1>
           <div className="carousel">
-            <Chart chartData={details.interest_over_time} />
+            {/* <Chart chartData={details.interest_over_time} /> */}
+            {/* NEW: Conditional rendering for the chart */}
+            {details.interest_over_time &&
+            details.interest_over_time.length > 0 ? (
+              <Chart chartData={details.interest_over_time} />
+            ) : (
+              <div className="text-center p-4">
+                <p>
+                  Live interest data is not available for on-demand analysis.
+                </p>
+                <a
+                  href={trendsUrl}
+                  className="btn btn-primary"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View on Google Trends (YouTube Search)
+                </a>
+              </div>
+            )}
           </div>
 
           <h1>Newest Comments</h1>

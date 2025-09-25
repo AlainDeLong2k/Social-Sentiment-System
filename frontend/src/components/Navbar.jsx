@@ -1,8 +1,13 @@
+import { Link } from "react-router-dom";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
 import logoBKU from "../assets/bku.png";
 
 export const Navbar = () => {
+  /**
+   * The main navigation bar for the application.
+   * Uses the Link component from react-router-dom for client-side navigation.
+   */
   return (
     <nav className="navbar navbar-expand-lg bg-dark-subtle">
       <div className="container-fluid">
@@ -23,16 +28,16 @@ export const Navbar = () => {
         <div className="collapse navbar-collapse" id="navbarNav">
           <ul className="navbar-nav">
             <li className="nav-item">
-              <a className="nav-link active" aria-current="page" href="/home">
+              <Link className="nav-link active" aria-current="page" to="/home">
                 Home
-              </a>
+              </Link>
             </li>
             <li className="nav-item">
-              <a className="nav-link" href="/#/Testapi">
-                Want to test API
-              </a>
+              <Link className="nav-link" to="/search">
+                Analyze Topic
+              </Link>
             </li>
-            <li className="nav-item">
+            {/* <li className="nav-item">
               <a
                 className="nav-link"
                 href={import.meta.env.VITE_GIHUB}
@@ -41,7 +46,7 @@ export const Navbar = () => {
               >
                 View Code
               </a>
-            </li>
+            </li> */}
             <li className="nav-item">
               <a
                 className="nav-link"
@@ -49,7 +54,7 @@ export const Navbar = () => {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Want to look at the model?
+                Look at the model
               </a>
             </li>
           </ul>

@@ -13,9 +13,9 @@ from app.services.sentiment_service import SentimentService
 
 
 def process_message_batch(
-        batch: List[Message],
-        sentiment_service: SentimentService,
-        db: Database,
+    batch: List[Message],
+    sentiment_service: SentimentService,
+    db: Database,
 ) -> None:
     """
     Processes a batch of Kafka messages: performs sentiment analysis and updates all database collections.
@@ -50,9 +50,9 @@ def process_message_batch(
     for message_data, prediction in zip(messages_data, predictions):
         entity_keyword = message_data.get("entity_keyword")
         entity_thumbnail = message_data.get("entity_thumbnail_url")
-        entity_video_url=message_data.get("entity_video_url")
+        entity_video_url = message_data.get("entity_video_url")
         entity_volume = message_data.get("entity_volume")
-        interest_data=message_data.get("interest_over_time")
+        interest_data = message_data.get("interest_over_time")
         data = message_data.get("video_and_comment_data", {})
 
         video_id = data.get("video_id")
@@ -69,14 +69,19 @@ def process_message_batch(
         entity_doc = db.entities.find_one_and_update(
             {"keyword": entity_keyword},
             {
-                "$setOnInsert": {
-                    "keyword": entity_keyword,
-                    "geo": settings.FETCH_TRENDS_GEO,
+                "$set": {
                     "volume": entity_volume,
                     "thumbnail_url": entity_thumbnail,
                     "video_url": entity_video_url,
+                },
+                "$setOnInsert": {
+                    "keyword": entity_keyword,
+                    "geo": settings.FETCH_TRENDS_GEO,
+                    # "volume": entity_volume,
+                    # "thumbnail_url": entity_thumbnail,
+                    # "video_url": entity_video_url,
                     "start_date": datetime.now(),
-                }
+                },
             },
             upsert=True,
             return_document=True,
@@ -89,6 +94,7 @@ def process_message_batch(
             source_doc = db.sources_youtube.find_one_and_update(
                 {"video_id": video_id},
                 {
+                    "$set": {"entity_id": entity_id},
                     "$setOnInsert": {
                         "entity_id": entity_id,
                         "video_id": video_id,
@@ -97,7 +103,7 @@ def process_message_batch(
                         "publish_date": datetime.strptime(
                             video_publish_date_str, "%Y-%m-%dT%H:%M:%SZ"
                         ),
-                    }
+                    },
                 },
                 upsert=True,
                 return_document=True,
@@ -115,7 +121,7 @@ def process_message_batch(
                 "publish_date": datetime.strptime(
                     data.get("publish_date"), "%Y-%m-%dT%H:%M:%SZ"
                 ),
-                "sentiment": sentiment_label
+                "sentiment": sentiment_label,
             }
         )
 
@@ -132,7 +138,7 @@ def process_message_batch(
                     "analysis_type": "weekly",
                     "created_at": datetime.now(),
                     "status": "completed",
-                    "interest_over_time": interest_data
+                    "interest_over_time": interest_data,
                 },
             },
             upsert=True,
@@ -159,7 +165,7 @@ def run_consumer_job() -> None:
         "bootstrap.servers": "localhost:9092",
         "group.id": "sentiment_analyzer_group",
         "auto.offset.reset": "earliest",
-        "enable.auto.commit": False
+        "enable.auto.commit": False,
     }
     consumer = Consumer(kafka_conf)
     consumer.subscribe([settings.KAFKA_TOPIC])
@@ -177,8 +183,8 @@ def run_consumer_job() -> None:
             if msg is None:
                 # No new message, check for timeout
                 if message_batch and (
-                        time.time() - last_process_time
-                        > settings.CONSUMER_BATCH_TIMEOUT_SECONDS
+                    time.time() - last_process_time
+                    > settings.CONSUMER_BATCH_TIMEOUT_SECONDS
                 ):
                     process_message_batch(message_batch, sentiment_service, db)
                     consumer.commit(message=msg, asynchronous=False)

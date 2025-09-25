@@ -34,7 +34,7 @@ db = client[settings.DB_NAME]
 # Initialize services once when the application starts.
 # This avoids reloading the heavy AI model on every request.
 print("Initializing services...")
-tr = Trends(request_delay=4.0)
+tr = Trends(request_delay=2.0)
 yt_service = YouTubeService(api_key=settings.YT_API_KEY)
 sentiment_service = SentimentService()
 
@@ -52,6 +52,7 @@ async def fetch_repr_comments(entity_id):
     # Fetch 2 comments for each sentiment
     sentiments = ["positive", "neutral", "negative"]
     comment_tasks = []
+    limit = settings.REPRESENTATIVE_COMMENTS_LIMIT
     for sentiment in sentiments:
         task = (
             db.comments_youtube.find(
@@ -59,8 +60,8 @@ async def fetch_repr_comments(entity_id):
                 {"text": 1, "author": 1, "publish_date": 1, "_id": 0},
             )
             .sort("publish_date", -1)
-            .limit(2)
-            .to_list(length=2)
+            .limit(limit)
+            .to_list(length=limit)
         )
 
         comment_tasks.append(task)
@@ -81,91 +82,91 @@ async def _get_full_entity_details(
     entity_id: ObjectId, analysis_type: str
 ) -> Dict[str, Any] | None:
     """
-    A helper function that fetches all detailed data for a given entity_id and analysis_type.
-    It retrieves pre-computed data and makes a live API call for interest data if needed.
+    Fetches all detailed data for an entity. It runs the database query,
+    interest data fetching, and comment fetching as concurrent, independent tasks.
     """
-    # 1. Start query from analysis_results to get the core data
-    pipeline = [
-        {"$match": {"entity_id": entity_id, "analysis_type": analysis_type}},
-        {"$sort": {"created_at": -1}},
-        {"$limit": 1},
-        {
-            "$lookup": {
-                "from": "entities",
-                "localField": "entity_id",
-                "foreignField": "_id",
-                "as": "entity_info",
-            }
-        },
-        {"$unwind": "$entity_info"},
-        {
-            "$project": {
-                "analysis_result_id": "$_id",  # Get the ID of this document for caching
-                "_id": {"$toString": "$entity_info._id"},
-                "keyword": "$entity_info.keyword",
-                "thumbnail_url": "$entity_info.thumbnail_url",
-                "representative_video_url": "$entity_info.video_url",
-                "analysis": "$results",
-                "interest_over_time": "$interest_over_time",
-            }
-        },
-    ]
 
-    main_data_list = await db.analysis_results.aggregate(pipeline).to_list(length=1)
+    async def fetch_main_data_task():
+        """Fetches the main analysis data from the database."""
+        pipeline = [
+            {"$match": {"entity_id": entity_id, "analysis_type": analysis_type}},
+            {"$sort": {"created_at": -1}},
+            {"$limit": 1},
+            {
+                "$lookup": {
+                    "from": "entities",
+                    "localField": "entity_id",
+                    "foreignField": "_id",
+                    "as": "entity_info",
+                }
+            },
+            {"$unwind": "$entity_info"},
+            {
+                "$project": {
+                    "analysis_result_id": "$_id",
+                    "_id": {"$toString": "$entity_info._id"},
+                    "keyword": "$entity_info.keyword",
+                    "thumbnail_url": "$entity_info.thumbnail_url",
+                    "representative_video_url": "$entity_info.video_url",
+                    "analysis": "$results",
+                    "interest_over_time": "$interest_over_time",
+                }
+            },
+        ]
+        results = await db.analysis_results.aggregate(pipeline).to_list(length=1)
+        return results[0] if results else None
 
-    if not main_data_list:
-        raise HTTPException(status_code=404, detail="Entity not found.")
+    # Run the main DB query and comment fetching concurrently
+    main_data_task = fetch_main_data_task()
+    comments_task = fetch_repr_comments(entity_id)
 
-    main_data = main_data_list[0]
+    main_data, rep_comments = await asyncio.gather(main_data_task, comments_task)
 
-    # 2. Check if interest data needs to be fetched live
+    if not main_data:
+        # If the main entity/analysis is not found, we can't proceed.
+        return None
+
+    # Now, handle the interest data fetching based on the result of the main query
     if not main_data.get("interest_over_time"):
         print(
             f"Interest data not found in DB for '{main_data['keyword']}'. Fetching live..."
         )
-        interest_data_to_cache = []
-        try:
-            df = tr.interest_over_time(
-                keywords=[main_data["keyword"]], timeframe="now 7-d"
-            )
-            if not df.empty:
-                daily_df = (
-                    df[[main_data["keyword"]]].resample("D").mean().round(0).astype(int)
-                )
-                interest_data_to_cache = [
-                    {"date": index.strftime("%Y-%m-%d"), "value": int(row.iloc[0])}
-                    for index, row in daily_df.iterrows()
-                ]
 
-            # If successfully fetched new data, save it back to the database
+        def blocking_interest_fetch(keyword: str):
+            """Synchronous wrapper for the blocking trendspy call."""
+            df = tr.interest_over_time(keywords=[keyword], timeframe="now 7-d")
+            if df.empty:
+                return []
+            daily_df = df[[keyword]].resample("D").mean().round(0).astype(int)
+            return [
+                {"date": index.strftime("%Y-%m-%d"), "value": int(row.iloc[0])}
+                for index, row in daily_df.iterrows()
+            ]
+
+        try:
+            # Run the blocking call in a separate thread to not block the server
+            interest_data_to_cache = await asyncio.to_thread(
+                blocking_interest_fetch, main_data["keyword"]
+            )
+
             if interest_data_to_cache:
                 main_data["interest_over_time"] = interest_data_to_cache
                 await db.analysis_results.update_one(
-                    {
-                        "_id": main_data["analysis_result_id"]
-                    },  # Use the _id from the analysis_results doc
+                    {"_id": main_data["analysis_result_id"]},
                     {"$set": {"interest_over_time": interest_data_to_cache}},
                 )
                 print(
                     f"Successfully cached interest data for '{main_data['keyword']}'."
                 )
-            else:
-                main_data["interest_over_time"] = []
-
         except Exception as e:
             print(f"Could not fetch live interest data: {e}")
             main_data["interest_over_time"] = []
 
-    # 3. Fetch representative comments
-    # This logic can be simplified and reused
-    rep_comments = await fetch_repr_comments(entity_id)
-
-    # 4. Combine and return
+    # Combine all results
     main_data.pop("analysis_result_id", None)
     return {**main_data, "representative_comments": rep_comments}
 
 
-# @router.get("/weekly", response_model=List[WeeklyTrendResponseSchema])
 @router.get("/weekly", response_model=WeeklyTrendListResponse)
 async def get_weekly_trends():
     """
@@ -180,7 +181,7 @@ async def get_weekly_trends():
             # 1. Filter for weekly analysis and sort by date to get the latest run
             {"$match": {"analysis_type": "weekly"}},
             {"$sort": {"created_at": -1}},
-            {"$limit": settings.FETCH_NUM_ENTITIES},
+            {"$limit": settings.HOME_PAGE_ENTITIES_LIMIT},
             # 2. Join with the 'entities' collection
             {
                 "$lookup": {
@@ -221,21 +222,31 @@ async def get_weekly_trends():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/{entity_id}", response_model=TrendDetailResponseSchema)
-async def get_trend_detail(entity_id: str):
+@router.get("/{analysis_type}/{entity_id}", response_model=TrendDetailResponseSchema)
+async def get_trend_detail_by_type(analysis_type: str, entity_id: str):
     """
-    Retrieves all detailed information for a single entity, including
-    analysis results, representative comments, and interest over time data.
+    Retrieves detailed information for a single entity, specifying
+    whether to fetch the 'weekly' or 'on-demand' analysis result.
     """
+    if analysis_type not in ["weekly", "on-demand"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid analysis type. Must be 'weekly' or 'on-demand'.",
+        )
+
     try:
-        # Validate the provided ID
         entity_obj_id = ObjectId(entity_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid entity ID format.")
 
-    full_details = await _get_full_entity_details(entity_obj_id, "weekly")
+    # Call the helper function with the specified type
+    full_details = await _get_full_entity_details(entity_obj_id, analysis_type)
+
     if not full_details:
-        raise HTTPException(status_code=404, detail="Entity not found.")
+        raise HTTPException(
+            status_code=404,
+            detail=f"'{analysis_type}' analysis for this entity not found.",
+        )
 
     return full_details
 
@@ -247,12 +258,32 @@ async def get_trend_detail(entity_id: str):
 )
 async def create_on_demand_analysis(request_data: OnDemandRequestSchema):
     """
-    Receives a keyword from the user, sends it to QStash for background
-    processing, and immediately returns a job ID.
+    Handles an on-demand analysis request.
+    First, it checks if a recent 'weekly' analysis for the keyword exists.
+    If yes, it returns a 'found' status with the entity_id for immediate redirection.
+    If not, it queues a new analysis job via QStash and returns a 'queued' status.
     """
-    keyword = request_data.keyword
-    if not keyword or not keyword.strip():
+    if not request_data.keyword or not request_data.keyword.strip():
         raise HTTPException(status_code=400, detail="Keyword cannot be empty.")
+
+    # Convert incoming keyword to lowercase for consistent matching
+    keyword = request_data.keyword.lower().strip()
+
+    # Check for existing weekly analysis
+    entity = await db.entities.find_one({"keyword": keyword})
+    if entity:
+        analysis = await db.analysis_results.find_one(
+            {"entity_id": entity["_id"], "analysis_type": "weekly"}
+        )
+        if analysis:
+            print(
+                f"Found existing weekly analysis for '{keyword}'. Returning redirect info."
+            )
+            # Return a different response if data already exists
+            return {"status": "found", "entity_id": str(entity["_id"])}
+
+    # If no existing analysis, proceed with queuing a new job
+    print(f"No weekly analysis found for '{keyword}'. Queuing a new job.")
 
     job_id = str(uuid.uuid4())
 
@@ -285,10 +316,7 @@ async def create_on_demand_analysis(request_data: OnDemandRequestSchema):
         print(f"Error publishing to QStash: {e}")
         raise HTTPException(status_code=500, detail="Failed to queue analysis job.")
 
-    return {
-        "message": "Analysis job accepted and is being processed.",
-        "job_id": job_id,
-    }
+    return {"status": "queued", "job_id": job_id}
 
 
 @router.get("/analysis/status/{job_id}", response_model=JobStatusResponseSchema)
@@ -318,7 +346,7 @@ async def get_analysis_status(job_id: str):
             entity_id = analysis_doc["entity_id"]
 
             # Call the helper with the correct entity_id and type
-            full_details = await _get_full_entity_details(entity_id, "on_demand")
+            full_details = await _get_full_entity_details(entity_id, "on-demand")
             response_data["result"] = full_details
 
     return response_data
@@ -402,19 +430,32 @@ async def process_on_demand_job(request: Request):
     comments_to_insert: List[Dict[str, Any]] = []
 
     # 4a. Upsert Entity first to get a stable entity_id
+    video_id = None
+    for video in videos:
+        video_id = video.get("id", {}).get("videoId", "")
+        if video_id:
+            break
+
     entity_thumbnail_url = (
         videos[0].get("snippet", {}).get("thumbnails", {}).get("high", {}).get("url")
     )
+    entity_video_url = f"https://www.youtube.com/watch?v={video_id}"
+
     entity_doc = await db.entities.find_one_and_update(
         {"keyword": keyword},
         {
+            "$set": {
+                "thumbnail_url": entity_thumbnail_url,
+                "video_url": entity_video_url,
+            },
             "$setOnInsert": {
                 "keyword": keyword,
                 "geo": settings.FETCH_TRENDS_GEO,
                 "volume": 0,  # Placeholder values
-                "thumbnail_url": entity_thumbnail_url,
+                # "thumbnail_url": entity_thumbnail_url,
+                # "video_url": entity_video_url,
                 "start_date": datetime.now(),
-            }
+            },
         },
         upsert=True,
         return_document=True,
@@ -432,15 +473,16 @@ async def process_on_demand_job(request: Request):
             source_doc = await db.sources_youtube.find_one_and_update(
                 {"video_id": video_id},
                 {
+                    "$set": {"entity_id": entity_id},
                     "$setOnInsert": {
-                        "entity_id": entity_id,
+                        # "entity_id": entity_id,
                         "video_id": video_id,
                         "url": comment_data.get("video_url"),
                         "title": comment_data.get("video_title"),
                         "publish_date": datetime.strptime(
                             comment_data.get("video_publish_date"), "%Y-%m-%dT%H:%M:%SZ"
                         ),
-                    }
+                    },
                 },
                 upsert=True,
                 return_document=True,
@@ -472,7 +514,7 @@ async def process_on_demand_job(request: Request):
                 },
                 "$setOnInsert": {
                     "entity_id": entity_id,
-                    "analysis_type": "on_demand",  # Note the type
+                    "analysis_type": "on-demand",  # Note the type
                     "created_at": datetime.now(),
                     "status": "completed",
                     "interest_over_time": [],
@@ -487,7 +529,7 @@ async def process_on_demand_job(request: Request):
 
     # 4d. Final update to job status
     analysis_result_doc = await db.analysis_results.find_one(
-        {"entity_id": entity_id, "analysis_type": "on_demand"}
+        {"entity_id": entity_id, "analysis_type": "on-demand"}
     )
     result_id = analysis_result_doc["_id"] if analysis_result_doc else None
 

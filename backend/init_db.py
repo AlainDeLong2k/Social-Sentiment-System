@@ -24,7 +24,7 @@ def get_db_client() -> MongoClient:
 
 
 def create_collection_with_validator(
-        db: Database, collection_name: str, validator: Dict[str, Any]
+    db: Database, collection_name: str, validator: Dict[str, Any]
 ) -> None:
     """
     Creates a collection with a specified JSON schema validator.
@@ -65,7 +65,7 @@ def setup_database() -> None:
                     "volume": {"bsonType": "int"},
                     "start_date": {"bsonType": "date"},
                     "thumbnail_url": {"bsonType": "string"},
-                    "video_url": {"bsonType": "string"}
+                    "video_url": {"bsonType": "string"},
                 },
             }
         }
@@ -81,7 +81,7 @@ def setup_database() -> None:
                 ],
                 "properties": {
                     "entity_id": {"bsonType": "objectId"},
-                    "analysis_type": {"enum": ["weekly", "on_demand"]},
+                    "analysis_type": {"enum": ["weekly", "on-demand"]},
                     "created_at": {"bsonType": "date"},
                     "status": {
                         "enum": ["pending", "processing", "completed", "failed"]
@@ -93,9 +93,9 @@ def setup_database() -> None:
                             "required": ["date", "value"],
                             "properties": {
                                 "date": {"bsonType": "string"},
-                                "value": {"bsonType": "int"}
-                            }
-                        }
+                                "value": {"bsonType": "int"},
+                            },
+                        },
                     },
                     "results": {
                         "bsonType": "object",
@@ -133,7 +133,7 @@ def setup_database() -> None:
                     "text",
                     "author",
                     "publish_date",
-                    "sentiment"
+                    "sentiment",
                 ],
                 "properties": {
                     "source_id": {"bsonType": "objectId"},
@@ -143,8 +143,8 @@ def setup_database() -> None:
                     "publish_date": {"bsonType": "date"},
                     "sentiment": {
                         "enum": ["positive", "neutral", "negative"],
-                        "description": "can only be one of the enum values and is required"
-                    }
+                        "description": "can only be one of the enum values and is required",
+                    },
                 },
             }
         }
@@ -154,13 +154,19 @@ def setup_database() -> None:
                 "bsonType": "object",
                 "required": ["_id", "keyword", "status", "created_at", "updated_at"],
                 "properties": {
-                    "_id": {"bsonType": "string"}, # We will use our job_id as the document _id
+                    "_id": {
+                        "bsonType": "string"
+                    },  # We will use our job_id as the document _id
                     "keyword": {"bsonType": "string"},
-                    "status": {"enum": ["pending", "processing", "completed", "failed"]},
+                    "status": {
+                        "enum": ["pending", "processing", "completed", "failed"]
+                    },
                     "created_at": {"bsonType": "date"},
                     "updated_at": {"bsonType": "date"},
-                    "result_id": {"bsonType": ["objectId", "null"]}, # Link to analysis_results on completion
-                }
+                    "result_id": {
+                        "bsonType": ["objectId", "null"]
+                    },  # Link to analysis_results on completion
+                },
             }
         }
 
