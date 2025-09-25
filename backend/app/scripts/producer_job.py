@@ -8,6 +8,8 @@ from confluent_kafka import Producer
 from app.core.config import settings
 from app.services.youtube_service import YouTubeService
 
+trends_client = Trends(request_delay=4.0)
+
 
 def get_rfc_time_ago(days: int) -> str:
     """
@@ -34,7 +36,6 @@ def run_producer_job() -> None:
 
     # --- 2. Get Trending Entities ---
     try:
-        trends_client = Trends()
         trends = trends_client.trending_now(
             geo=settings.FETCH_TRENDS_GEO, hours=24 * settings.FETCH_TRENDS_WITHIN_DAYS
         )
@@ -57,17 +58,24 @@ def run_producer_job() -> None:
         try:
             trends_client_for_interest = Trends()
             df = trends_client_for_interest.interest_over_time(
-                keywords=[entity_keyword], timeframe=f"now {settings.FETCH_TRENDS_WITHIN_DAYS}-d"
+                keywords=[entity_keyword],
+                timeframe=f"now {settings.FETCH_TRENDS_WITHIN_DAYS}-d",
             )
             if not df.empty:
-                daily_df = df[[entity_keyword]].resample('D').mean().round(0).astype(int)
+                daily_df = (
+                    df[[entity_keyword]].resample("D").mean().round(0).astype(int)
+                )
                 interest_data = [
-                    {"date": index.strftime('%Y-%m-%d'), "value": int(row.iloc[0])}
+                    {"date": index.strftime("%Y-%m-%d"), "value": int(row.iloc[0])}
                     for index, row in daily_df.iterrows()
                 ]
-            print(f"Successfully fetched interest over time data for '{entity_keyword}'.")
+            print(
+                f"Successfully fetched interest over time data for '{entity_keyword}'."
+            )
         except Exception as e:
-            print(f"Could not fetch interest over time data for '{entity_keyword}': {e}")
+            print(
+                f"Could not fetch interest over time data for '{entity_keyword}': {e}"
+            )
 
         # --- 3a. Contextual Query Building ---
         # Sort related keywords by length to prioritize more specific ones
@@ -91,10 +99,17 @@ def run_producer_job() -> None:
             continue
 
         first_video = videos[0]
-        entity_thumbnail_url = first_video.get("snippet", {}).get("thumbnails", {}).get("high", {}).get("url")
+        entity_thumbnail_url = (
+            first_video.get("snippet", {})
+            .get("thumbnails", {})
+            .get("high", {})
+            .get("url")
+        )
         # Construct the representative video URL
         video_id = first_video.get("id", {}).get("videoId", "")
-        entity_video_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else None
+        entity_video_url = (
+            f"https://www.youtube.com/watch?v={video_id}" if video_id else None
+        )
 
         # --- 3c. Fetch Comments with Smart Sampling ---
         comments_for_entity: List[Dict[str, Any]] = []

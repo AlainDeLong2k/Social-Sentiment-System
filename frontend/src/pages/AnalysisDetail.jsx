@@ -4,7 +4,7 @@ import { Navbar } from "../components/Navbar";
 import { BootstrapLoader } from "../components/BootstrapLoader";
 import { BootstrapProgress } from "../components/BootstrapProgress";
 import { CommentList } from "../components/CommentList";
-import { Chart } from "../components/chart";
+import { Chart } from "../components/Chart";
 import ReactPlayer from "react-player";
 import { AiOutlineArrowDown } from "react-icons/ai";
 import { getTrendDetail } from "../services/apiService";

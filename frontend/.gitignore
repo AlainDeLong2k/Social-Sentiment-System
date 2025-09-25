@@ -26,6 +26,7 @@ dist-ssr
 # Environments
 .env
 .env.development
+.env.production
 
 # Config JSON
 config.json

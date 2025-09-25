@@ -96,7 +96,6 @@ def process_message_batch(
                 {
                     "$set": {"entity_id": entity_id},
                     "$setOnInsert": {
-                        "entity_id": entity_id,
                         "video_id": video_id,
                         "url": video_url,
                         "title": video_title,
