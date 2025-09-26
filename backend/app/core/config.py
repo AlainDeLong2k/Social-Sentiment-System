@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     ON_DEMAND_COMMENTS_PER_VIDEO: int = 100
     ON_DEMAND_TOTAL_COMMENTS: int = 500
 
+    # Inference Batch Size
+    INFERENCE_BATCH_SIZE: int = 32
+
     # Pydantic model configuration to load from .env file
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

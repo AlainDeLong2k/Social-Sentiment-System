@@ -48,9 +48,10 @@ class SentimentService:
             new_text.append(t)
         return " ".join(new_text)
 
-    def predict_batch(self, texts: List[str]) -> List[Dict[str, Any]]:
+    def predict(self, texts: List[str]) -> List[Dict[str, Any]]:
         """
-        Predict sentiment for a batch of texts (batch size is assumed to be small).
+        Predict sentiment for a batch of texts, splitting into sub-batches
+        for efficiency on CPU.
         """
         # Preprocess all texts
         preprocessed_texts = [self._preprocess_text(text) for text in texts]
@@ -64,34 +65,45 @@ class SentimentService:
 
         indices, texts_to_predict = zip(*non_empty_texts_with_indices)
 
-        # Tokenize the batch
-        encoded_inputs = self.tokenizer(
-            list(texts_to_predict),
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=512,
-        ).to(self.device)
+        # --- Define batch size for CPU ---
+        batch_size = settings.INFERENCE_BATCH_SIZE
 
-        # Run inference
-        with torch.no_grad():
-            outputs = self.model(**encoded_inputs)
-            logits = outputs.logits.detach().cpu().numpy()
-
-        # Explicitly clear intermediate tensors from VRAM
-        del encoded_inputs, outputs
-        torch.cuda.empty_cache()
-
-        # Apply softmax to get probabilities
-        probs = softmax(logits, axis=1)
-
-        # Map predictions to labels with highest probability
         predictions = []
-        for prob in probs:
-            max_idx = int(np.argmax(prob))
-            predictions.append(
-                {"label": self.config.id2label[max_idx], "score": float(prob[max_idx])}
-            )
+        # --- Process in chunks ---
+        for start in range(0, len(texts_to_predict), batch_size):
+            sub_texts = texts_to_predict[start : start + batch_size]
+
+            # Tokenize
+            encoded_inputs = self.tokenizer(
+                list(sub_texts),
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=512,
+            ).to(self.device)
+
+            # Inference
+            with torch.no_grad():
+                outputs = self.model(**encoded_inputs)
+                logits = outputs.logits.detach().cpu().numpy()
+
+            # Clear memory
+            del encoded_inputs, outputs
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            # Softmax + map to labels
+            probs = softmax(logits, axis=1)
+            for prob in probs:
+                max_idx = int(np.argmax(prob))
+                predictions.append(
+                    {
+                        "label": self.config.id2label[max_idx],
+                        "score": float(prob[max_idx]),
+                    }
+                )
+
+            print(f"  - Processed batch {start // batch_size + 1}...")
 
         # Map predictions back to their original positions
         final_results: List[Dict[str, Any] | None] = [None] * len(texts)

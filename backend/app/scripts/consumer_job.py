@@ -41,7 +41,7 @@ def process_message_batch(
         return
 
     # --- 2. Perform Batch Sentiment Analysis ---
-    predictions = sentiment_service.predict_batch(texts_to_predict)
+    predictions = sentiment_service.predict(texts_to_predict)
 
     # --- 3. Save data to Database ---
     video_id_cache: Dict[str, ObjectId] = {}
@@ -186,7 +186,7 @@ def run_consumer_job() -> None:
                     > settings.CONSUMER_BATCH_TIMEOUT_SECONDS
                 ):
                     process_message_batch(message_batch, sentiment_service, db)
-                    consumer.commit(message=msg, asynchronous=False)
+                    consumer.commit(asynchronous=False)
 
                     message_batch.clear()
                     last_process_time = time.time()
@@ -202,7 +202,7 @@ def run_consumer_job() -> None:
             message_batch.append(msg)
             if len(message_batch) >= settings.CONSUMER_BATCH_SIZE:
                 process_message_batch(message_batch, sentiment_service, db)
-                consumer.commit(message=msg, asynchronous=False)
+                consumer.commit(asynchronous=False)
 
                 message_batch.clear()
                 last_process_time = time.time()

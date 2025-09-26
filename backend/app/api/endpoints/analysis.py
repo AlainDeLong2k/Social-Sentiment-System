@@ -410,36 +410,19 @@ async def process_on_demand_job(request: Request):
         print(f"No comments found for on-demand keyword: {keyword}")
         return {"message": "No comments found."}
 
-    # 3. Perform Sentiment Analysis IN BATCHES
+    # 3. Perform Sentiment Analysis
     print(f"Analyzing {len(final_comments)} comments in batches...")
-    batch_size = settings.CONSUMER_BATCH_SIZE
-    all_predictions = []
+    texts_to_predict = [comment.get("text", "") for comment in final_comments]
+    predictions = sentiment_service.predict(texts_to_predict)
 
-    # Loop through comments in chunks of batch_size
-    for i in range(0, len(final_comments), batch_size):
-        batch_comments = final_comments[i : i + batch_size]
-        texts_to_predict = [comment.get("text", "") for comment in batch_comments]
-
-        # Process one small batch at a time
-        batch_predictions = sentiment_service.predict_batch(texts_to_predict)
-        all_predictions.extend(batch_predictions)
-        print(f"  - Processed batch {i // batch_size + 1}...")
-
-    # 4. Save results to Database (similar to a mini-consumer)
-    video_id_cache: Dict[str, ObjectId] = {}
-    comments_to_insert: List[Dict[str, Any]] = []
+    # 4. Save raw data and aggregate counts in memory to Database (similar to a mini-consumer)
 
     # 4a. Upsert Entity first to get a stable entity_id
-    video_id = None
-    for video in videos:
-        video_id = video.get("id", {}).get("videoId", "")
-        if video_id:
-            break
-
+    video_id = videos[0].get("id", {}).get("videoId", "")
+    entity_video_url = f"https://www.youtube.com/watch?v={video_id}"
     entity_thumbnail_url = (
         videos[0].get("snippet", {}).get("thumbnails", {}).get("high", {}).get("url")
     )
-    entity_video_url = f"https://www.youtube.com/watch?v={video_id}"
 
     entity_doc = await db.entities.find_one_and_update(
         {"keyword": keyword},
@@ -452,8 +435,6 @@ async def process_on_demand_job(request: Request):
                 "keyword": keyword,
                 "geo": settings.FETCH_TRENDS_GEO,
                 "volume": 0,  # Placeholder values
-                # "thumbnail_url": entity_thumbnail_url,
-                # "video_url": entity_video_url,
                 "start_date": datetime.now(),
             },
         },
@@ -463,8 +444,17 @@ async def process_on_demand_job(request: Request):
     entity_id = entity_doc["_id"]
 
     # 4b. Process and save each comment
-    for comment_data, prediction in zip(final_comments, all_predictions):
+    # Initialize in-memory counters
+    sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
+
+    video_id_cache: Dict[str, ObjectId] = {}
+    comments_to_insert: List[Dict[str, Any]] = []
+
+    for comment_data, prediction in zip(final_comments, predictions):
         sentiment_label = prediction["label"].lower()
+
+        # Increment the counter in memory instead of calling the DB
+        sentiment_counts[sentiment_label] += 1
 
         # Upsert Source Video
         video_id = comment_data.get("video_id")
@@ -504,35 +494,34 @@ async def process_on_demand_job(request: Request):
             }
         )
 
-        # Update aggregated results in real-time
-        await db.analysis_results.update_one(
-            {"entity_id": entity_id},
-            {
-                "$inc": {
-                    f"results.{sentiment_label}_count": 1,
-                    "results.total_comments": 1,
-                },
-                "$setOnInsert": {
-                    "entity_id": entity_id,
-                    "analysis_type": "on-demand",  # Note the type
-                    "created_at": datetime.now(),
-                    "status": "completed",
-                    "interest_over_time": [],
-                },
-            },
-            upsert=True,
-        )
-
     # 4c. Bulk insert all comments after the loop
     if comments_to_insert:
         await db.comments_youtube.insert_many(comments_to_insert)
 
-    # 4d. Final update to job status
-    analysis_result_doc = await db.analysis_results.find_one(
-        {"entity_id": entity_id, "analysis_type": "on-demand"}
+    # 4d. Update analysis_results only ONCE with the final aggregated counts
+    analysis_result_doc = await db.analysis_results.find_one_and_update(
+        {"entity_id": entity_id, "analysis_type": "on-demand"},
+        {
+            "$inc": {
+                "results.positive_count": sentiment_counts["positive"],
+                "results.negative_count": sentiment_counts["negative"],
+                "results.neutral_count": sentiment_counts["neutral"],
+                "results.total_comments": len(final_comments),
+            },
+            "$setOnInsert": {
+                "entity_id": entity_id,
+                "analysis_type": "on-demand",
+                "created_at": datetime.now(),
+                "status": "processing",
+                "interest_over_time": [],
+            },
+        },
+        upsert=True,
+        return_document=True,
     )
-    result_id = analysis_result_doc["_id"] if analysis_result_doc else None
+    result_id = analysis_result_doc["_id"]
 
+    # 4e. Final update to job status
     await db.on_demand_jobs.update_one(
         {"_id": job_id},
         {
