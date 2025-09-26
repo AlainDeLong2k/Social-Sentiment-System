@@ -49,7 +49,7 @@ async def fetch_repr_comments(entity_id):
     if not source_ids:
         return {"positive": [], "neutral": [], "negative": []}
 
-    # Fetch 2 comments for each sentiment
+    # Fetch newest comments for each sentiment
     sentiments = ["positive", "neutral", "negative"]
     comment_tasks = []
     limit = settings.REPRESENTATIVE_COMMENTS_LIMIT
@@ -465,7 +465,6 @@ async def process_on_demand_job(request: Request):
                 {
                     "$set": {"entity_id": entity_id},
                     "$setOnInsert": {
-                        # "entity_id": entity_id,
                         "video_id": video_id,
                         "url": comment_data.get("video_url"),
                         "title": comment_data.get("video_title"),

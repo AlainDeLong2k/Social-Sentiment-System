@@ -77,9 +77,6 @@ def process_message_batch(
                 "$setOnInsert": {
                     "keyword": entity_keyword,
                     "geo": settings.FETCH_TRENDS_GEO,
-                    # "volume": entity_volume,
-                    # "thumbnail_url": entity_thumbnail,
-                    # "video_url": entity_video_url,
                     "start_date": datetime.now(),
                 },
             },
