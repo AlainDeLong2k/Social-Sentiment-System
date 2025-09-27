@@ -96,23 +96,33 @@ export const SearchPage = () => {
               Enter a keyword, name, or topic to start a new sentiment analysis.
             </p>
 
-            <form onSubmit={handleSubmit} className="input-group my-4">
-              <input
-                type="text"
-                className="form-control"
-                placeholder="e.g., 'iPhone 17'"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                disabled={isBusy}
-              />
-              <button
-                className="btn btn-primary"
-                type="submit"
-                disabled={isBusy}
+            <div className="d-flex justify-content-center">
+              <form
+                onSubmit={handleSubmit}
+                className="row g-2 my-4"
+                style={{ maxWidth: "300px", width: "100%" }}
               >
-                {isBusy ? "Analyzing..." : "Analyze"}
-              </button>
-            </form>
+                <div className="col-8">
+                  <input
+                    type="text"
+                    className="form-control flex"
+                    placeholder="e.g., 'iPhone 17'"
+                    value={keyword}
+                    onChange={(e) => setKeyword(e.target.value)}
+                    disabled={isBusy}
+                  />
+                </div>
+                <div className="col-4">
+                  <button
+                    className="btn btn-primary"
+                    type="submit"
+                    disabled={isBusy}
+                  >
+                    {isBusy ? "Analyzing..." : "Analyze"}
+                  </button>
+                </div>
+              </form>
+            </div>
 
             {/* Display feedback to the user */}
             {status === "loading" && <BootstrapLoader />}
