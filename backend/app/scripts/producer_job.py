@@ -8,7 +8,7 @@ from confluent_kafka import Producer
 from app.core.config import settings
 from app.services.youtube_service import YouTubeService
 
-trends_client = Trends(request_delay=4.0)
+trends_client_for_interest = Trends(request_delay=4.0)
 
 
 def get_rfc_time_ago(days: int) -> str:
@@ -36,6 +36,7 @@ def run_producer_job() -> None:
 
     # --- 2. Get Trending Entities ---
     try:
+        trends_client = Trends()
         trends = trends_client.trending_now(
             geo=settings.FETCH_TRENDS_GEO, hours=24 * settings.FETCH_TRENDS_WITHIN_DAYS
         )
@@ -56,7 +57,6 @@ def run_producer_job() -> None:
         # --- Fetch and process interest over time data ---
         interest_data = []
         try:
-            trends_client_for_interest = Trends()
             df = trends_client_for_interest.interest_over_time(
                 keywords=[entity_keyword],
                 timeframe=f"now {settings.FETCH_TRENDS_WITHIN_DAYS}-d",

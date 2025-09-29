@@ -23,7 +23,7 @@ def process_message_batch(
     if not batch:
         return
 
-    print(f"Processing a batch of {len(batch)} messages...")
+    # print(f"Processing a batch of {len(batch)} messages...")
 
     # --- 1. Prepare data for the model ---
     messages_data: List[Dict[str, Any]] = []
@@ -168,9 +168,14 @@ def run_consumer_job() -> None:
 
     print("Consumer job started. Waiting for messages...")
 
+    # Initialize performance counters
+    total_messages_processed = 0
+    start_time = time.perf_counter()  # Use a high-precision counter
+
     # --- 2. Batch Processing Loop ---
     message_batch: List[Message] = []
     last_process_time = time.time()
+    num_batches: int = 0
 
     try:
         while True:
@@ -178,12 +183,24 @@ def run_consumer_job() -> None:
 
             if msg is None:
                 # No new message, check for timeout
-                if message_batch and (
+                # if message_batch and (
+                #     time.time() - last_process_time
+                #     > settings.CONSUMER_BATCH_TIMEOUT_SECONDS
+                # ):
+                if (
                     time.time() - last_process_time
                     > settings.CONSUMER_BATCH_TIMEOUT_SECONDS
                 ):
+                    # Add the number of messages in the batch to the total
+                    total_messages_processed += len(message_batch)
+                    num_batches += 1
+                    print(
+                        f"Processing batch {num_batches}: {len(message_batch)} messages."
+                    )
+
                     process_message_batch(message_batch, sentiment_service, db)
-                    consumer.commit(asynchronous=False)
+                    consumer.commit(message=msg, asynchronous=False)
+                    # consumer.commit(asynchronous=False)
 
                     message_batch.clear()
                     last_process_time = time.time()
@@ -198,6 +215,11 @@ def run_consumer_job() -> None:
             # Add message to batch and check if batch is full
             message_batch.append(msg)
             if len(message_batch) >= settings.CONSUMER_BATCH_SIZE:
+                # Add the number of messages in the batch to the total
+                total_messages_processed += len(message_batch)
+                num_batches += 1
+                print(f"Processing batch {num_batches}: {len(message_batch)} messages.")
+
                 process_message_batch(message_batch, sentiment_service, db)
                 consumer.commit(asynchronous=False)
 
@@ -207,11 +229,27 @@ def run_consumer_job() -> None:
     except KeyboardInterrupt:
         print("Stopping consumer job...")
         # Process any remaining messages in the batch before exiting
-        process_message_batch(message_batch, sentiment_service, db)
+        # process_message_batch(message_batch, sentiment_service, db)
+    except Exception as e:
+        print(f"Failed to process messages: {e}")
+        print("Stopping consumer job...")
     finally:
         consumer.close()
         mongo_client.close()
         print("Consumer and DB connection closed.")
+
+        # Calculate and print performance summary
+        end_time = time.perf_counter()
+        duration = end_time - start_time
+
+        # Avoid division by zero if no messages were processed
+        if duration > 0 and total_messages_processed > 0:
+            messages_per_second = total_messages_processed / duration
+            print("\n--- Performance Summary ---")
+            print(f"Total messages processed: {total_messages_processed}")
+            print(f"Total processing time: {duration/60:.2f} minutes")
+            print(f"Average throughput: {messages_per_second:.2f} messages/second")
+            print("-------------------------")
 
 
 if __name__ == "__main__":

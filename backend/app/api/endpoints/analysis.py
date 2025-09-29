@@ -1,5 +1,6 @@
 from typing import Any, List, Dict
 import uuid
+import time
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Request
 
@@ -11,9 +12,8 @@ import pandas as pd
 from trendspy import Trends
 
 from app.core.config import settings
-from app.core.clients import qstash_client, qstash_receiver
+from app.core.clients import qstash_client
 from app.schemas.analysis_schema import (
-    WeeklyTrendResponseSchema,
     WeeklyTrendListResponse,
     TrendDetailResponseSchema,
     OnDemandRequestSchema,
@@ -359,6 +359,7 @@ async def process_on_demand_job(request: Request):
     single keyword. It fetches data, runs sentiment analysis, and saves all
     results to the database.
     """
+    start = time.perf_counter()
     # 1. Initialization
     job_data = await request.json()
     keyword = job_data.get("keyword")
@@ -414,6 +415,7 @@ async def process_on_demand_job(request: Request):
     print(f"Analyzing {len(final_comments)} comments in batches...")
     texts_to_predict = [comment.get("text", "") for comment in final_comments]
     predictions = sentiment_service.predict(texts_to_predict)
+    print(f"Successfully analyzed {len(final_comments)} comments!!!")
 
     # 4. Save raw data and aggregate counts in memory to Database (similar to a mini-consumer)
 
@@ -532,5 +534,8 @@ async def process_on_demand_job(request: Request):
         },
     )
 
-    print(f"Successfully processed and saved analysis for job {job_id}")
+    end = time.perf_counter()
+    print(
+        f"Successfully processed and saved analysis for job {job_id} in {end-start:.6f}"
+    )
     return {"message": f"Job {job_id} for '{keyword}' processed successfully."}
