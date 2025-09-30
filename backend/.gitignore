@@ -208,3 +208,6 @@ __marimo__/
 
 # Kafka Commands
 command.txt
+
+# Temp files
+exceed_quota.py
