@@ -13,6 +13,7 @@ from trendspy import Trends
 
 from app.core.config import settings
 from app.core.clients import qstash_client
+from app.core.exceptions import QuotaExceededError
 from app.schemas.analysis_schema import (
     WeeklyTrendListResponse,
     TrendDetailResponseSchema,
@@ -306,7 +307,7 @@ async def create_on_demand_analysis(request_data: OnDemandRequestSchema):
 
     try:
         qstash_client.message.publish_json(
-            url=callback_url, body={"keyword": keyword, "job_id": job_id}, retries=3
+            url=callback_url, body={"keyword": keyword, "job_id": job_id}, retries=0
         )
     except Exception as e:
         # If publishing fails, update the job status to 'failed'
@@ -323,6 +324,7 @@ async def create_on_demand_analysis(request_data: OnDemandRequestSchema):
 async def get_analysis_status(job_id: str):
     """
     Checks the status of an on-demand analysis job from the 'on_demand_jobs' collection.
+    If complete or failed, it returns the final result or an error message.
     """
     job = await db.on_demand_jobs.find_one({"_id": job_id})
 
@@ -334,6 +336,7 @@ async def get_analysis_status(job_id: str):
         "status": job["status"],
         "keyword": job["keyword"],
         "result": None,
+        "error_message": job.get("error_message"),
     }
 
     # If job is completed, fetch the full result data
@@ -360,179 +363,261 @@ async def process_on_demand_job(request: Request):
     results to the database.
     """
     start = time.perf_counter()
+
     # 1. Initialization
     job_data = await request.json()
+    print(job_data)
     keyword = job_data.get("keyword")
     job_id = job_data.get("job_id")
 
+    if not job_id:
+        raise HTTPException(status_code=400, detail="Job ID is missing.")
+
     if not keyword:
         # Acknowledge the request but do nothing if keyword is missing
-        return {"message": "Keyword is missing, job ignored."}
+        # If we have a job_id but no keyword, mark the job as failed.
+        await db.on_demand_jobs.update_one(
+            {"_id": job_id},
+            {"$set": {"status": "failed", "updated_at": datetime.now()}},
+        )
+        raise HTTPException(status_code=400, detail="Keyword is missing, job ignored.")
 
-    print(f"Processing job {job_id} for keyword: {keyword}")
     # Update job status to 'processing'
     await db.on_demand_jobs.update_one(
         {"_id": job_id},
         {"$set": {"status": "processing", "updated_at": datetime.now()}},
     )
+    print(f"Processing job {job_id} for keyword: {keyword}")
 
-    # 2. Fetch data (similar to a mini-producer)
-    # Note: For on-demand, I might use a smaller fetching strategy
-    videos = yt_service.search_videos(query_string=keyword)
-    if not videos:
-        print(f"No videos found for on-demand keyword: {keyword}")
-        return {"message": "No videos found."}
+    try:
+        # 2. Fetch data (similar to a mini-producer)
+        # Note: For on-demand, I might use a smaller fetching strategy
+        videos = yt_service.search_videos(query_string=keyword)
+        if not videos:
+            error_msg: str = f"No videos found for on-demand keyword '{keyword}'."
+            print(error_msg)
 
-    comments_for_entity: List[Dict[str, Any]] = []
-    for video in videos:
-        video_id = video.get("id", {}).get("videoId")
-        snippet = video.get("snippet", {})
-        if not video_id or not snippet:
-            continue
-
-        comments = yt_service.fetch_comments(
-            video_id=video_id, limit=settings.ON_DEMAND_COMMENTS_PER_VIDEO
-        )  # Smaller limit for on-demand
-
-        for comment in comments:
-            comment["video_id"] = video_id
-            comment["video_title"] = snippet.get("title")
-            comment["video_publish_date"] = snippet.get("publishedAt")
-            comment["video_url"] = f"https://www.youtube.com/watch?v={video_id}"
-        comments_for_entity.extend(comments)
-
-        if (
-            len(comments_for_entity) >= settings.ON_DEMAND_TOTAL_COMMENTS
-        ):  # Smaller total limit for on-demand
-            break
-
-    final_comments = comments_for_entity[: settings.ON_DEMAND_TOTAL_COMMENTS]
-    if not final_comments:
-        print(f"No comments found for on-demand keyword: {keyword}")
-        return {"message": "No comments found."}
-
-    # 3. Perform Sentiment Analysis
-    print(f"Analyzing {len(final_comments)} comments in batches...")
-    texts_to_predict = [comment.get("text", "") for comment in final_comments]
-    predictions = sentiment_service.predict(texts_to_predict)
-    print(f"Successfully analyzed {len(final_comments)} comments!!!")
-
-    # 4. Save raw data and aggregate counts in memory to Database (similar to a mini-consumer)
-
-    # 4a. Upsert Entity first to get a stable entity_id
-    video_id = videos[0].get("id", {}).get("videoId", "")
-    entity_video_url = f"https://www.youtube.com/watch?v={video_id}"
-    entity_thumbnail_url = (
-        videos[0].get("snippet", {}).get("thumbnails", {}).get("high", {}).get("url")
-    )
-
-    entity_doc = await db.entities.find_one_and_update(
-        {"keyword": keyword},
-        {
-            "$set": {
-                "thumbnail_url": entity_thumbnail_url,
-                "video_url": entity_video_url,
-            },
-            "$setOnInsert": {
-                "keyword": keyword,
-                "geo": settings.FETCH_TRENDS_GEO,
-                "volume": 0,  # Placeholder values
-                "start_date": datetime.now(),
-            },
-        },
-        upsert=True,
-        return_document=True,
-    )
-    entity_id = entity_doc["_id"]
-
-    # 4b. Process and save each comment
-    # Initialize in-memory counters
-    sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
-
-    video_id_cache: Dict[str, ObjectId] = {}
-    comments_to_insert: List[Dict[str, Any]] = []
-
-    for comment_data, prediction in zip(final_comments, predictions):
-        sentiment_label = prediction["label"].lower()
-
-        # Increment the counter in memory instead of calling the DB
-        sentiment_counts[sentiment_label] += 1
-
-        # Upsert Source Video
-        video_id = comment_data.get("video_id")
-        source_id: ObjectId | None = video_id_cache.get(video_id)
-        if not source_id:
-            source_doc = await db.sources_youtube.find_one_and_update(
-                {"video_id": video_id},
+            # Update job status to failed and raise an exception
+            await db.on_demand_jobs.update_one(
+                {"_id": job_id},
                 {
-                    "$set": {"entity_id": entity_id},
-                    "$setOnInsert": {
-                        "video_id": video_id,
-                        "url": comment_data.get("video_url"),
-                        "title": comment_data.get("video_title"),
-                        "publish_date": datetime.strptime(
-                            comment_data.get("video_publish_date"), "%Y-%m-%dT%H:%M:%SZ"
-                        ),
-                    },
+                    "$set": {
+                        "status": "failed",
+                        "error_message": error_msg,
+                        "updated_at": datetime.now(),
+                    }
                 },
-                upsert=True,
-                return_document=True,
             )
-            source_id = source_doc["_id"]
-            video_id_cache[video_id] = source_id
+            raise HTTPException(
+                status_code=404,
+                detail=error_msg,
+            )
 
-        # Prepare comment for bulk insertion
-        comments_to_insert.append(
-            {
-                "source_id": source_id,
-                "comment_id": comment_data.get("comment_id"),
-                "text": comment_data.get("text"),
-                "author": comment_data.get("author"),
-                "publish_date": datetime.strptime(
-                    comment_data.get("publish_date"), "%Y-%m-%dT%H:%M:%SZ"
-                ),
-                "sentiment": sentiment_label,
-            }
+        comments_for_entity: List[Dict[str, Any]] = []
+        for video in videos:
+            video_id = video.get("id", {}).get("videoId")
+            snippet = video.get("snippet", {})
+            if not video_id or not snippet:
+                continue
+
+            comments = yt_service.fetch_comments(
+                video_id=video_id, limit=settings.ON_DEMAND_COMMENTS_PER_VIDEO
+            )  # Smaller limit for on-demand
+
+            for comment in comments:
+                comment["video_id"] = video_id
+                comment["video_title"] = snippet.get("title")
+                comment["video_publish_date"] = snippet.get("publishedAt")
+                comment["video_url"] = f"https://www.youtube.com/watch?v={video_id}"
+            comments_for_entity.extend(comments)
+
+            if (
+                len(comments_for_entity) >= settings.ON_DEMAND_TOTAL_COMMENTS
+            ):  # Smaller total limit for on-demand
+                break
+
+        final_comments = comments_for_entity[: settings.ON_DEMAND_TOTAL_COMMENTS]
+        if not final_comments:
+            error_msg = f"No comments found for on-demand keyword '{keyword}'."
+            print(error_msg)
+
+            # Update job status to failed and raise an exception
+            await db.on_demand_jobs.update_one(
+                {"_id": job_id},
+                {
+                    "$set": {
+                        "status": "failed",
+                        "error_message": error_msg,
+                        "updated_at": datetime.now(),
+                    }
+                },
+            )
+            raise HTTPException(status_code=404, detail=error_msg)
+
+        # 3. Perform Sentiment Analysis
+        print(f"Analyzing {len(final_comments)} comments in batches...")
+        texts_to_predict = [comment.get("text", "") for comment in final_comments]
+        predictions = sentiment_service.predict(texts_to_predict)
+        print(f"Successfully analyzed {len(final_comments)} comments!!!")
+
+        # 4. Save raw data and aggregate counts in memory to Database (similar to a mini-consumer)
+
+        # 4a. Upsert Entity first to get a stable entity_id
+        video_id = videos[0].get("id", {}).get("videoId", "")
+        entity_video_url = f"https://www.youtube.com/watch?v={video_id}"
+        entity_thumbnail_url = (
+            videos[0]
+            .get("snippet", {})
+            .get("thumbnails", {})
+            .get("high", {})
+            .get("url")
         )
 
-    # 4c. Bulk insert all comments after the loop
-    if comments_to_insert:
-        await db.comments_youtube.insert_many(comments_to_insert)
-
-    # 4d. Update analysis_results only ONCE with the final aggregated counts
-    analysis_result_doc = await db.analysis_results.find_one_and_update(
-        {"entity_id": entity_id, "analysis_type": "on-demand"},
-        {
-            "$inc": {
-                "results.positive_count": sentiment_counts["positive"],
-                "results.negative_count": sentiment_counts["negative"],
-                "results.neutral_count": sentiment_counts["neutral"],
-                "results.total_comments": len(final_comments),
+        entity_doc = await db.entities.find_one_and_update(
+            {"keyword": keyword},
+            {
+                "$set": {
+                    "thumbnail_url": entity_thumbnail_url,
+                    "video_url": entity_video_url,
+                },
+                "$setOnInsert": {
+                    "keyword": keyword,
+                    "geo": settings.FETCH_TRENDS_GEO,
+                    "volume": 0,  # Placeholder values
+                    "start_date": datetime.now(),
+                },
             },
-            "$setOnInsert": {
-                "entity_id": entity_id,
-                "analysis_type": "on-demand",
-                "created_at": datetime.now(),
-                "status": "processing",
-                "interest_over_time": [],
-            },
-        },
-        upsert=True,
-        return_document=True,
-    )
-    result_id = analysis_result_doc["_id"]
+            upsert=True,
+            return_document=True,
+        )
+        entity_id = entity_doc["_id"]
 
-    # 4e. Final update to job status
-    await db.on_demand_jobs.update_one(
-        {"_id": job_id},
-        {
-            "$set": {
-                "status": "completed",
-                "result_id": result_id,
-                "updated_at": datetime.now(),
-            }
-        },
-    )
+        # 4b. Process and save each comment
+        # Initialize in-memory counters
+        sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
+
+        video_id_cache: Dict[str, ObjectId] = {}
+        comments_to_insert: List[Dict[str, Any]] = []
+
+        for comment_data, prediction in zip(final_comments, predictions):
+            sentiment_label = prediction["label"].lower()
+
+            # Increment the counter in memory instead of calling the DB
+            sentiment_counts[sentiment_label] += 1
+
+            # Upsert Source Video
+            video_id = comment_data.get("video_id")
+            source_id: ObjectId | None = video_id_cache.get(video_id)
+            if not source_id:
+                source_doc = await db.sources_youtube.find_one_and_update(
+                    {"video_id": video_id},
+                    {
+                        "$set": {"entity_id": entity_id},
+                        "$setOnInsert": {
+                            "video_id": video_id,
+                            "url": comment_data.get("video_url"),
+                            "title": comment_data.get("video_title"),
+                            "publish_date": datetime.strptime(
+                                comment_data.get("video_publish_date"),
+                                "%Y-%m-%dT%H:%M:%SZ",
+                            ),
+                        },
+                    },
+                    upsert=True,
+                    return_document=True,
+                )
+                source_id = source_doc["_id"]
+                video_id_cache[video_id] = source_id
+
+            # Prepare comment for bulk insertion
+            comments_to_insert.append(
+                {
+                    "source_id": source_id,
+                    "comment_id": comment_data.get("comment_id"),
+                    "text": comment_data.get("text"),
+                    "author": comment_data.get("author"),
+                    "publish_date": datetime.strptime(
+                        comment_data.get("publish_date"), "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                    "sentiment": sentiment_label,
+                }
+            )
+
+        # 4c. Bulk insert all comments after the loop
+        if comments_to_insert:
+            await db.comments_youtube.insert_many(comments_to_insert)
+
+        # 4d. Update analysis_results only ONCE with the final aggregated counts
+        analysis_result_doc = await db.analysis_results.find_one_and_update(
+            {"entity_id": entity_id, "analysis_type": "on-demand"},
+            {
+                "$inc": {
+                    "results.positive_count": sentiment_counts["positive"],
+                    "results.negative_count": sentiment_counts["negative"],
+                    "results.neutral_count": sentiment_counts["neutral"],
+                    "results.total_comments": len(final_comments),
+                },
+                "$setOnInsert": {
+                    "entity_id": entity_id,
+                    "analysis_type": "on-demand",
+                    "created_at": datetime.now(),
+                    "status": "processing",
+                    "interest_over_time": [],
+                },
+            },
+            upsert=True,
+            return_document=True,
+        )
+        result_id = analysis_result_doc["_id"]
+
+        # 4e. Final update to job status
+        await db.on_demand_jobs.update_one(
+            {"_id": job_id},
+            {
+                "$set": {
+                    "status": "completed",
+                    "result_id": result_id,
+                    "updated_at": datetime.now(),
+                }
+            },
+        )
+    except QuotaExceededError as e:  # Catch the specific QuotaExceededError
+        error_msg = str(e)
+        print(f"Quota exceeded for job {job_id}: {error_msg}")
+        await db.on_demand_jobs.update_one(
+            {"_id": job_id},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": error_msg,
+                    "updated_at": datetime.now(),
+                }
+            },
+        )
+
+        # Raise a generic exception to QStash
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=error_msg
+        )
+    except Exception as e:  # The general exception handler set a message
+        # Use the actual exception message for the error_message
+        error_msg = str(e)
+        print(f"An error occurred processing job {job_id}: {error_msg}")
+        await db.on_demand_jobs.update_one(
+            {"_id": job_id},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": error_msg,
+                    "updated_at": datetime.now(),
+                }
+            },
+        )
+
+        # Raise a generic exception to QStash
+        raise HTTPException(
+            status_code=500, detail="An internal processing error occurred."
+        )
 
     end = time.perf_counter()
     print(

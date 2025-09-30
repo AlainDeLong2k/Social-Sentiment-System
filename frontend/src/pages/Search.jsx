@@ -39,7 +39,8 @@ export const SearchPage = () => {
           } else if (response.status === "failed") {
             clearInterval(intervalId);
             setStatus("failed");
-            setError("The analysis job failed. Please try again.");
+            // Use the specific error message from the API
+            setError(response.error_message || "An unknown error occurred.");
           }
         })
         .catch((err) => {

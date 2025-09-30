@@ -115,3 +115,4 @@ class JobStatusResponseSchema(BaseModel):
     status: str
     keyword: str
     result: TrendDetailResponseSchema | None = None
+    error_message: str | None = None  # To send error messages to the frontend
