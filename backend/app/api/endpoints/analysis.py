@@ -366,7 +366,7 @@ async def process_on_demand_job(request: Request):
 
     # 1. Initialization
     job_data = await request.json()
-    print(job_data)
+    # print(job_data)
     keyword = job_data.get("keyword")
     job_id = job_data.get("job_id")
 
@@ -394,7 +394,9 @@ async def process_on_demand_job(request: Request):
         # Note: For on-demand, I might use a smaller fetching strategy
         videos = yt_service.search_videos(query_string=keyword)
         if not videos:
-            error_msg: str = f"No videos found for on-demand keyword '{keyword}'."
+            error_msg: str = (
+                f"No videos found for on-demand keyword '{keyword}' of job {job_id}."
+            )
             print(error_msg)
 
             # Update job status to failed and raise an exception
@@ -438,7 +440,9 @@ async def process_on_demand_job(request: Request):
 
         final_comments = comments_for_entity[: settings.ON_DEMAND_TOTAL_COMMENTS]
         if not final_comments:
-            error_msg = f"No comments found for on-demand keyword '{keyword}'."
+            error_msg = (
+                f"No comments found for on-demand keyword '{keyword}' of job {job_id}."
+            )
             print(error_msg)
 
             # Update job status to failed and raise an exception
@@ -455,10 +459,18 @@ async def process_on_demand_job(request: Request):
             raise HTTPException(status_code=404, detail=error_msg)
 
         # 3. Perform Sentiment Analysis
-        print(f"Analyzing {len(final_comments)} comments in batches...")
+        print(
+            f"Analyzing {len(final_comments)} comments in batches for job {job_id} to background thread..."
+        )
         texts_to_predict = [comment.get("text", "") for comment in final_comments]
-        predictions = sentiment_service.predict(texts_to_predict)
-        print(f"Successfully analyzed {len(final_comments)} comments!!!")
+
+        # Run the CPU-bound AI task in a separate thread to avoid blocking
+        predictions = await asyncio.to_thread(
+            sentiment_service.predict, texts_to_predict
+        )
+        print(
+            f"Successfully analyzed {len(final_comments)} comments for job {job_id}!!!"
+        )
 
         # 4. Save raw data and aggregate counts in memory to Database (similar to a mini-consumer)
 
