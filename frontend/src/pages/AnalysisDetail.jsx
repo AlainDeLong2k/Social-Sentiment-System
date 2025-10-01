@@ -115,8 +115,7 @@ export const AnalysisDetail = () => {
 
           <h1>Interest Over Last 7 Days</h1>
           <div className="carousel">
-            {/* <Chart chartData={details.interest_over_time} /> */}
-            {/* NEW: Conditional rendering for the chart */}
+            {/* Conditional rendering for the chart */}
             {details.interest_over_time &&
             details.interest_over_time.length > 0 ? (
               <Chart chartData={details.interest_over_time} />
