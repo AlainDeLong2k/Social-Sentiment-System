@@ -24,10 +24,10 @@ export const BootstrapProgress = ({ positive, negative, neutral }) => {
         style={{ height: "40px" }}
       >
         <div
-          className="progress-bar bg-warning text-dark"
+          className="progress-bar bg-secondary text-white"
           style={{ width: neutral }}
         >
-          Neutral: {neutral}
+          NEUTRAL: {neutral}
         </div>
       </div>
       <div
@@ -40,7 +40,7 @@ export const BootstrapProgress = ({ positive, negative, neutral }) => {
         style={{ height: "40px" }}
       >
         <div className="progress-bar bg-danger" style={{ width: negative }}>
-          Negative: {negative}
+          NEGATIVE: {negative}
         </div>
       </div>
       <br />
