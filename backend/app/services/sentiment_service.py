@@ -103,7 +103,7 @@ class SentimentService:
                     }
                 )
 
-            print(f"  - Processed batch {start // batch_size + 1}...")
+            # print(f"  - Processed batch {start // batch_size + 1}...")
 
         # Map predictions back to their original positions
         final_results: List[Dict[str, Any] | None] = [None] * len(texts)

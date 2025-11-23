@@ -1,5 +1,6 @@
 from typing import Any, List, Dict
 from app.core.config import settings
+from app.core.exceptions import QuotaExceededError
 
 from googleapiclient.discovery import build, Resource
 from googleapiclient.errors import HttpError
@@ -40,6 +41,12 @@ class YouTubeService:
             return response.get("items", [])
 
         except HttpError as e:
+            # Specific error handling for quota exceeded
+            content_str = e.content.decode("utf-8")
+            if e.resp.status == 403 and "quotaExceeded" in content_str:
+                print("YouTube API quota exceeded.")
+                raise QuotaExceededError("YouTube API quota exceeded")
+
             print(
                 f"An HTTP error {e.resp.status} occurred during video search: {e.content}"
             )
@@ -92,6 +99,12 @@ class YouTubeService:
                     break
 
         except HttpError as e:
+            # Specific error handling for quota exceeded
+            content_str = e.content.decode("utf-8")
+            if e.resp.status == 403 and "quotaExceeded" in content_str:
+                print("YouTube API quota exceeded.")
+                raise QuotaExceededError("YouTube API quota has been exceeded.")
+
             # It's common for comments to be disabled, so we'll log it but not treat as a fatal error.
             if "commentsDisabled" in str(e.content):
                 print(f"Comments are disabled for video {video_id}.")

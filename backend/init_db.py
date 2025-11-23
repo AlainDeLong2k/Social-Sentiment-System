@@ -166,6 +166,9 @@ def setup_database() -> None:
                     "result_id": {
                         "bsonType": ["objectId", "null"]
                     },  # Link to analysis_results on completion
+                    "error_message": {
+                        "bsonType": ["string", "null"]
+                    },  # Store specific error message
                 },
             }
         }
