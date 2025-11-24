@@ -40,7 +40,7 @@ The system features a **dual-processing architecture**:
 - **Apache Kafka** - Distributed event streaming for batch processing
 - **Upstash QStash** - Serverless task queue for on-demand processing
 - **RoBERTa** - Pre-trained transformer model for sentiment classification
-- **PostgreSQL** - Primary data storage
+- **MongoDB** - Primary data storage
 
 ### Frontend
 
